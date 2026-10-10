@@ -1,8 +1,11 @@
 import { formatSlot, STUDIO_TZ } from "../time";
 
 const BASE = "https://api.cal.com/v2";
-// These run mid-call; Vaani gives a tool 2-3 s, so a slow Cal.com must fail fast, not hang.
-const TIMEOUT_MS = 2000;
+// Both run mid-call. Slots must be quick (Vaani gives a tool 2-3 s). Creating a booking takes Cal.com
+// 2-3 s on its own, and aborting early can leave a booking we never hear about, so it gets longer;
+// the agent says "one moment while I book that" to cover the pause.
+const SLOTS_TIMEOUT_MS = 2000;
+const BOOK_TIMEOUT_MS = 8000;
 
 export type Slot = { start: string; label: string };
 export type Calcom = {
@@ -29,7 +32,7 @@ export function createCalcom(cfg: { apiKey: string; eventTypeId: number; attende
         end: end.toISOString(),
         timeZone: STUDIO_TZ,
       });
-      const res = await f(`${BASE}/slots?${qs}`, { headers: { ...auth, "cal-api-version": "2024-09-04" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const res = await f(`${BASE}/slots?${qs}`, { headers: { ...auth, "cal-api-version": "2024-09-04" }, signal: AbortSignal.timeout(SLOTS_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`Cal.com slots: ${res.status}`);
       const body = (await res.json()) as { data: Record<string, { start: string }[]> };
       return Object.values(body.data)
@@ -44,7 +47,7 @@ export function createCalcom(cfg: { apiKey: string; eventTypeId: number; attende
     async book({ start, name, phone, notes }) {
       const res = await f(`${BASE}/bookings`, {
         method: "POST",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(BOOK_TIMEOUT_MS),
         headers: { ...auth, "cal-api-version": "2026-02-25", "content-type": "application/json" },
         body: JSON.stringify({
           start,
