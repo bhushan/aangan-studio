@@ -1,5 +1,5 @@
-// Realistic demo calls for `npm run smoke -- --demo`: the September phone enquiries from the case file,
-// replayed as if the voice agent had answered them over the last fortnight. What the agent "heard" is
+// Realistic demo calls for `npm run smoke -- --demo`: one September phone enquiry from the case file per
+// outcome, replayed as if the voice agent had answered it in the last ten days. What the agent "heard" is
 // extracted from each transcript by the same Gemini review production uses, so every verdict on the
 // dashboard is real model output. Times are spread across the day so some land after hours.
 import fs from "node:fs";
@@ -22,27 +22,20 @@ export type DemoCall = {
   pick: number | null;
 };
 
-// day = days before today; at = IST time of day. Roughly a third after hours, as in the case brief.
-const PLAN: Record<string, { day: number; at: string; pick?: number | null; hangUpAfter?: number }> = {
-  T01: { day: 13, at: "10:23", pick: 0 },
-  T02: { day: 13, at: "21:40", pick: 1 },
-  T03: { day: 12, at: "11:15" },
-  T04: { day: 11, at: "16:05" },
-  T05: { day: 11, at: "22:18", pick: 2 },
-  T06: { day: 10, at: "12:42", pick: 0 },
-  T07: { day: 9, at: "19:55" },
-  T09: { day: 9, at: "11:32" },
-  T10: { day: 8, at: "14:20" },
-  T11: { day: 7, at: "08:47" },
-  T12: { day: 6, at: "20:31", pick: null },
-  T13: { day: 6, at: "15:10" },
-  T14: { day: 5, at: "23:05", pick: 1 },
-  T15: { day: 4, at: "09:12", pick: 2 },
-  T17: { day: 3, at: "21:58", hangUpAfter: 5 },
-  T16: { day: 1, at: "18:40", pick: 0 },
-  T18: { day: 2, at: "13:25" },
-  T19: { day: 2, at: "07:50" },
-  T20: { day: 1, at: "22:36", pick: 1 },
+// One case-file call per outcome, all placed today. day = days before today; at = IST time of day,
+// half of them outside 10am to 7pm. `heard` adds what the caller would have told our agent but the
+// case-file transcript leaves out (the agent always asks for a name and the area).
+const PLAN: Record<string, { day: number; at: string; pick?: number | null; hangUpAfter?: number; heard?: Answers }> = {
+  T11: { day: 0, at: "08:47", heard: { name: "Sneha Iyer" } }, // senior callback: timeline still unclear
+  T01: { day: 0, at: "10:23", pick: 0 }, // booked
+  T03: { day: 0, at: "11:15" }, // not a fit: outside Pune
+  T09: { day: 0, at: "11:32" }, // complaint
+  T10: { day: 0, at: "14:20", heard: { name: "Amit Desai" } }, // not a fit: budget
+  T04: { day: 0, at: "16:05", heard: { name: "Kavita Joshi", locality: "Baner" } }, // not a fit: advice only
+  T07: { day: 0, at: "19:55", heard: { name: "Meera Kulkarni", locality: "Hadapsar", completion: "Before Diwali, about three weeks from now" } }, // not a fit: timeline
+  T12: { day: 0, at: "20:31", pick: null }, // qualified, not booked: wants a site visit
+  T02: { day: 0, at: "21:40", pick: 1, heard: { name: "Rohan Mehta" } }, // qualified with a flag, booked
+  T17: { day: 0, at: "22:05", hangUpAfter: 5 }, // caller cut off
 };
 
 /** A plausible Indian mobile number per enquiry, stable across runs. */
@@ -90,27 +83,14 @@ export async function buildDemoCalls(now: Date): Promise<DemoCall[]> {
   for (const e of enquiries.filter((x) => PLAN[x.id])) {
     const plan = PLAN[e.id];
     const startedAt = istAt(plan.day, plan.at, now);
+    if (startedAt > now) throw new Error(`${e.id} would start in the future (${plan.at} IST); run later or move it earlier`);
     const full = durationOf(e.header);
     const durationSec = plan.hangUpAfter ? 48 : full;
     const transcript = toVaani(e.text, startedAt, full, plan.hangUpAfter);
     // What the agent would have passed to /qualify: the details the caller actually gave.
-    const answers = plan.hangUpAfter ? null : (await review(transcript, { now })).answers;
+    const answers = plan.hangUpAfter ? null : { ...(await review(transcript, { now })).answers, ...plan.heard };
     calls.push({ key: e.id, phone: phoneFor(e.id), startedAt, durationSec, transcript, answers, pick: plan.pick ?? null });
   }
 
-  // Girish (T16) says he called on Monday and nobody got back: that earlier call, cut off early.
-  const girish = calls.find((c) => c.key === "T16");
-  if (girish) {
-    const startedAt = new Date(girish.startedAt.getTime() - 2 * 86400_000 - 3 * 3600_000);
-    calls.push({
-      key: "T16-first",
-      phone: girish.phone,
-      startedAt,
-      durationSec: 31,
-      transcript: `[${startedAt.toISOString().slice(11, 19)}] AGENT: Thank you for calling Aangan Studio, how can I help you today?\n\n[${new Date(startedAt.getTime() + 6000).toISOString().slice(11, 19)}] USER: Hi, I'm Girish, I have a 3BHK in Viman Nagar and wanted to talk about`,
-      answers: null,
-      pick: null,
-    });
-  }
   return calls.sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
 }
