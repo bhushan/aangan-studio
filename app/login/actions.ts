@@ -3,11 +3,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
-import { checkPassword, safeNext, SESSION_COOKIE, SESSION_DAYS, signSession } from "@/lib/session";
+import { authEnabled, checkPassword, safeNext, SESSION_COOKIE, SESSION_DAYS, signSession } from "@/lib/session";
 
 export type SignInState = { error: string | null };
 
 export async function signIn(_prev: SignInState, form: FormData): Promise<SignInState> {
+  if (!authEnabled()) redirect("/"); // the dashboard is open; nothing to sign in to
   const ok = await checkPassword(String(form.get("password") ?? ""), env("DASHBOARD_PASSWORD"));
   if (!ok) {
     // A short pause makes guessing the shared password slow.

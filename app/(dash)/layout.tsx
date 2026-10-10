@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { authEnabled } from "@/lib/session";
 import { signOut } from "../login/actions";
 import { NavLinks } from "./_components/nav-links";
 
@@ -14,11 +15,13 @@ export default function DashLayout({ children }: LayoutProps<"/">) {
             <span className="hidden text-sm font-semibold text-stone-900 sm:inline">Aangan Studio</span>
           </Link>
           <NavLinks />
-          <form action={signOut} className="ml-auto">
-            <button type="submit" className="rounded-lg px-3 py-1.5 text-sm text-stone-600 hover:text-stone-900">
-              Sign out
-            </button>
-          </form>
+          {authEnabled() && (
+            <form action={signOut} className="ml-auto">
+              <button type="submit" className="rounded-lg px-3 py-1.5 text-sm text-stone-600 hover:text-stone-900">
+                Sign out
+              </button>
+            </form>
+          )}
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">{children}</main>

@@ -6,15 +6,17 @@ import { createNeonRepo } from "./calls/neon-repo";
 import type { CallsRepo } from "./calls/repo";
 import { env, optionalEnv } from "./env";
 import { DEFAULT_RATES, type Rates } from "./metrics";
-import { SESSION_COOKIE, verifySession } from "./session";
+import { authEnabled, SESSION_COOKIE, verifySession } from "./session";
 
 let repo: CallsRepo | null = null;
 
 /** Reads for the dashboard. Checks the session again here; proxy.ts is only the first gate. */
 export async function dashboardRepo(): Promise<CallsRepo> {
   await connection(); // dashboard data is always per request; also makes the clock reads below safe
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!(await verifySession(token, env("SESSION_SECRET"), new Date()))) redirect("/login");
+  if (authEnabled()) {
+    const token = (await cookies()).get(SESSION_COOKIE)?.value;
+    if (!(await verifySession(token, env("SESSION_SECRET"), new Date()))) redirect("/login");
+  }
   repo ??= createNeonRepo(env("DATABASE_URL"));
   return repo;
 }

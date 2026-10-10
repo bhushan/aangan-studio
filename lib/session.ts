@@ -2,6 +2,9 @@
 // Web Crypto only, so the same code runs in proxy.ts and in server actions.
 
 export const SESSION_COOKIE = "aangan_session";
+
+/** The dashboard is password-protected only while DASHBOARD_PASSWORD is set; unset, it is open to anyone. */
+export const authEnabled = (env: Record<string, string | undefined> = process.env) => !!env.DASHBOARD_PASSWORD;
 export const SESSION_DAYS = 30;
 
 const enc = new TextEncoder();

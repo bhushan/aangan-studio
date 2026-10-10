@@ -8,7 +8,7 @@ designer a full handoff note (Telegram), and logs **every** call to HubSpot and 
 Scope: incoming phone calls only. See "Extending to WhatsApp and the web form" below.
 Built for the MESA Founder's Office case 03 (Nikhil Deshpande, Aangan Studio, Pune).
 
-**Live:** dashboard at [aangan-studio-two.vercel.app](https://aangan-studio-two.vercel.app) (shared studio password).
+**Live:** dashboard at [aangan-studio-two.vercel.app](https://aangan-studio-two.vercel.app) (open for review; see Dashboard for the password switch).
 
 | At a glance | |
 |---|---|
@@ -109,8 +109,10 @@ the skipped step is recorded (`npm run smoke` prints e.g. `"telegram: Telegram n
 
 ## Dashboard
 
-One shared password (`DASHBOARD_PASSWORD`), a 30-day signed cookie (`proxy.ts`, `lib/session.ts`),
-and every data read checks the session again (`lib/dashboard.ts`).
+Protected by one shared password while `DASHBOARD_PASSWORD` is set: a 30-day signed cookie (`proxy.ts`,
+`lib/session.ts`), and every data read checks the session again (`lib/dashboard.ts`). With the variable
+unset the dashboard is open to anyone, which is how it runs now for review. Real callers' names, numbers
+and transcripts are on it, so set the password again before real calls come in.
 
 - **Overview** (`/`), for Nikhil: share of callers answered within 5 minutes against the September
   baseline (48% got no reply within 48 hours), calls caught after hours, qualified share,
@@ -142,7 +144,8 @@ Numbers come from `lib/metrics.ts` (unit-tested). Pipeline values each booked co
 - After the Vaani tools were re-created (see Setup step 7), the end-to-end path is verified by the
   production smoke test; a final live phone call is pending Vaani credit.
 - Pipeline is booked consultations at ₹8 to 14 lakh each, before conversion, not revenue.
-- One shared dashboard password suits a small studio; named logins would come with a bigger team.
+- The dashboard is open for review. With the password set it uses one shared login, which suits a small
+  studio; named logins would come with a bigger team.
 
 ## Extending to WhatsApp and the web form
 

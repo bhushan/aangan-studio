@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkPassword, safeNext, signSession, verifySession } from "./session";
+import { authEnabled, checkPassword, safeNext, signSession, verifySession } from "./session";
 
 const secret = "test-secret-not-real";
 const now = new Date("2026-10-10T12:00:00Z");
@@ -39,4 +39,12 @@ describe("safeNext", () => {
     ["/login", "/"],
     [null, "/"],
   ])("%s -> %s", (input, out) => expect(safeNext(input)).toBe(out));
+});
+
+describe("authEnabled", () => {
+  it("guards the dashboard only when a password is configured", () => {
+    expect(authEnabled({ DASHBOARD_PASSWORD: "open sesame" })).toBe(true);
+    expect(authEnabled({ DASHBOARD_PASSWORD: "" })).toBe(false);
+    expect(authEnabled({})).toBe(false);
+  });
 });
