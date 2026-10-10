@@ -29,15 +29,22 @@ const unfilled = (v: string | null) => (v && /[{}]/.test(v) ? null : v);
 /** Shared secret via header, bearer token, or `?secret=` (the Vaani dashboard webhook takes only a URL). */
 export function isAuthorized(headers: Headers, secret: string | undefined, url?: URL): boolean {
   if (!secret) return false;
-  const given =
-    headers.get("x-aangan-secret") ??
-    headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    url?.searchParams.get("secret") ??
-    "";
-  const a = Buffer.from(given);
+  // Any one matching source is enough: Vaani may send its own Authorization header alongside our URL secret.
+  const candidates = [
+    ...SECRET_HEADERS.map((h) => headers.get(h)),
+    headers.get("authorization")?.replace(/^Bearer\s+/i, ""),
+    url?.searchParams.get("secret"),
+  ];
   const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
+  return candidates.some((given) => {
+    if (!given) return false;
+    const a = Buffer.from(given);
+    return a.length === b.length && timingSafeEqual(a, b);
+  });
 }
+
+// Our tool header, plus names a dashboard "Secret" field commonly uses.
+const SECRET_HEADERS = ["x-aangan-secret", "x-webhook-secret", "x-vaani-secret", "x-secret", "x-api-key"];
 
 function callMeta(raw: unknown) {
   const b = obj(raw);

@@ -6,6 +6,8 @@ import { isAuthorized } from "./adapter";
 export function vaaniRoute(handler: (body: unknown, deps: Deps) => Promise<unknown>) {
   return async function POST(req: Request): Promise<Response> {
     if (!isAuthorized(req.headers, process.env.VAANI_TOOL_SECRET, new URL(req.url))) {
+      // Header names only, never values, to see how a caller sends its secret.
+      console.warn(`vaani 401: headers [${[...req.headers.keys()].join(", ")}], query secret ${new URL(req.url).searchParams.has("secret")}`);
       return Response.json({ error: "unauthorized" }, { status: 401 });
     }
     let body: unknown;

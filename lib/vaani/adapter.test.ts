@@ -104,6 +104,17 @@ describe("tool requests without a call id", () => {
     expect(r.answers).toMatchObject({ name: "Priya", locality: "Kothrud" });
   });
 
+  it("accepts the URL secret even when Vaani sends its own Authorization header", () => {
+    const h = new Headers({ authorization: "Bearer some-vaani-signature" });
+    expect(isAuthorized(h, "s3cret", new URL("https://x.test/api/vaani/webhook?secret=s3cret"))).toBe(true);
+  });
+
+  it("accepts the dashboard Secret field sent in common webhook secret headers", () => {
+    for (const name of ["x-webhook-secret", "x-vaani-secret", "x-secret", "x-api-key"]) {
+      expect(isAuthorized(new Headers({ [name]: "s3cret" }), "s3cret")).toBe(true);
+    }
+  });
+
   it("accepts the secret as a query parameter for the dashboard webhook URL", () => {
     expect(isAuthorized(new Headers(), "s3cret", new URL("https://x.test/api/vaani/webhook?secret=s3cret"))).toBe(true);
     expect(isAuthorized(new Headers(), "s3cret", new URL("https://x.test/api/vaani/webhook?secret=nope"))).toBe(false);
