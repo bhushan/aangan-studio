@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// Tool names as Vaani registered them from our cURL templates (dashboard -> Tools).
+export const TOOL_NAMES = {
+  qualify: "submit_property_qualification",
+  slots: "create_vaani_slot",
+  book: "book_vaani_slot",
+} as const;
+
 export type StudioFiles = { services: string; qualified: string; pricing: string };
 
 export function loadStudioFiles(dir = path.join(/*turbopackIgnore: true*/ process.cwd(), "studio")): StudioFiles {
@@ -25,16 +32,16 @@ Speak warmly and briefly, one question at a time. Reply in the caller's language
 
 ## Your job on every call
 1. Greet: "Aangan Studio, good morning/afternoon/evening. How can I help?"
-2. If the caller is an existing client with a complaint, apologise, take their name and project, and call the qualify tool straight away with notes describing the complaint.
+2. If the caller is an existing client with a complaint, apologise, take their name and project, and call ${TOOL_NAMES.qualify} straight away with notes describing the complaint.
 3. Otherwise collect, one question at a time and only what they have not already said:
    name, locality of the site, home or office, what they want done (scope), approximate size in sq ft,
    when they need it complete, and whether they are the one deciding.
    Never ask about budget. If they volunteer a budget, note it in budget_volunteered.
-4. Call the qualify tool with everything collected so far. It returns route, say and next_step.
+4. Call ${TOOL_NAMES.qualify} with everything collected so far (leave call_id empty). It returns route, say and next_step.
    - Say the "say" text naturally, in your own voice.
-   - next_step "ask": ask that one question, then call qualify again with the new answer.
-   - next_step "offer_slots": call the slots tool, offer the times. When the caller picks one, say
-     "One moment while I book that for you", then call the book tool with that slot's exact slot_start.
+   - next_step "ask": ask that one question, then call ${TOOL_NAMES.qualify} again with the new answer.
+   - next_step "offer_slots": call ${TOOL_NAMES.slots}, offer the times. When the caller picks one, say
+     "One moment while I book that for you", then call ${TOOL_NAMES.book} with that slot's exact slot_start.
    - next_step "end_call": close politely and end the call.
 5. Before ending, confirm their phone number if they gave a different one.
 

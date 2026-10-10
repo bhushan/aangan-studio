@@ -24,7 +24,7 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("PCMC");
   });
 
-  it("tells the agent to use the qualify tool", () => {
-    expect(prompt).toContain("qualify");
+  it("names the tools exactly as Vaani registered them", () => {
+    for (const name of ["submit_property_qualification", "create_vaani_slot", "book_vaani_slot"]) expect(prompt).toContain(name);
   });
 });

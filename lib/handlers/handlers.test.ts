@@ -282,6 +282,17 @@ describe("handleWebhook", () => {
   });
 });
 
+describe("tools with a call id the agent made up", () => {
+  it("attach to the open call instead of creating a stray row", async () => {
+    const { repo, deps } = setup({
+      seed: [makeCall({ id: "live", vaaniCallId: "room-real", startedAt: new Date("2026-10-01T16:58:00Z"), answers: {} })],
+    });
+    await handleQualify({ call_id: "call123", name: "Priya", locality: "Kothrud" }, deps);
+    expect(repo.all()).toHaveLength(1);
+    expect(repo.all()[0]).toMatchObject({ id: "live", answers: { name: "Priya" } });
+  });
+});
+
 describe("tools without a call id", () => {
   it("attach to the call that is currently open", async () => {
     const { repo, deps } = setup({

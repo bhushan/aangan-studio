@@ -34,13 +34,19 @@ export type QualifyResponse = { route: Route; say: string; next_step: NextStep; 
 // A tool request without a call id belongs to the call in progress (Vaani's call_started creates it).
 const OPEN_CALL_WINDOW_MS = 60 * 60 * 1000;
 
+const openCall = (deps: Deps) => deps.repo.latestOpen(new Date(deps.now().getTime() - OPEN_CALL_WINDOW_MS));
+
+/**
+ * Webhook events carry Vaani's real room name. Tool calls may carry none, or one the agent made up
+ * (Vaani marks call_id required), so for tools an unknown id falls back to the call in progress.
+ */
 async function findOrCreate(
   deps: Deps,
   meta: { vaaniCallId: string | null; callerNumber: string | null; startedAt: Date | null; answeredAt: Date | null },
+  source: "webhook" | "tool" = "webhook",
 ): Promise<CallRecord> {
-  const existing = meta.vaaniCallId
-    ? await deps.repo.findByVaaniId(meta.vaaniCallId)
-    : await deps.repo.latestOpen(new Date(deps.now().getTime() - OPEN_CALL_WINDOW_MS));
+  const byId = meta.vaaniCallId ? await deps.repo.findByVaaniId(meta.vaaniCallId) : null;
+  const existing = byId ?? (source === "tool" || !meta.vaaniCallId ? await openCall(deps) : null);
   if (existing) return existing;
   const startedAt = meta.startedAt ?? deps.now();
   return deps.repo.create({
@@ -82,7 +88,7 @@ function speak(d: Decision, question: string | null): Pick<QualifyResponse, "say
 
 export async function handleQualify(raw: unknown, deps: Deps): Promise<QualifyResponse> {
   const req = parseQualifyRequest(raw);
-  const call = await findOrCreate(deps, req);
+  const call = await findOrCreate(deps, req, "tool");
   const answers: Answers = { ...call.answers, ...req.answers };
 
   let result: AssessResult | null = null;
@@ -131,9 +137,7 @@ export async function handleSlots(raw: unknown, deps: Deps): Promise<{ slots: Sl
 
 export async function handleBook(raw: unknown, deps: Deps): Promise<{ booked: boolean; say: string }> {
   const req = parseBookRequest(raw);
-  const call = req.vaaniCallId
-    ? await deps.repo.findByVaaniId(req.vaaniCallId)
-    : await deps.repo.latestOpen(new Date(deps.now().getTime() - OPEN_CALL_WINDOW_MS));
+  const call = (req.vaaniCallId ? await deps.repo.findByVaaniId(req.vaaniCallId) : null) ?? (await openCall(deps));
   if (!call || !isQualified(call.route)) return { booked: false, say: LINES.notQualifiedForBooking };
   if (call.bookingUid && call.bookingAt) return { booked: true, say: LINES.booked(formatSlot(call.bookingAt)) };
 
