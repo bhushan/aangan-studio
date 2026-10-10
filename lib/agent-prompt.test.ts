@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAgentPrompt, loadStudioFiles } from "./agent-prompt";
+import { buildAgentPrompt, loadStudioFiles, TOOL_NAMES } from "./agent-prompt";
 
 describe("buildAgentPrompt", () => {
   const prompt = buildAgentPrompt(loadStudioFiles());
@@ -22,6 +22,12 @@ describe("buildAgentPrompt", () => {
   it("includes what the studio does and does not do", () => {
     expect(prompt).toContain("What we don't do");
     expect(prompt).toContain("PCMC");
+  });
+
+  it("asks the decider question once, gently, before qualifying", () => {
+    expect(prompt).toContain("Will anyone else be part of the decision?");
+    expect(prompt).toMatch(/Ask it once[\s\S]*whatever they answer/);
+    expect(prompt.indexOf("part of the decision")).toBeLessThan(prompt.indexOf(`Call ${TOOL_NAMES.qualify} with everything`));
   });
 
   it("names the tools exactly as Vaani registered them", () => {
