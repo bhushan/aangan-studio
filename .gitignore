@@ -42,3 +42,8 @@ next-env.d.ts
 
 .DS_Store
 !.env.example
+
+# agent skills installed by marketplace integrations
+.agents/
+.claude/
+skills-lock.json

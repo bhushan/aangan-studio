@@ -11,7 +11,8 @@
     "eval": "tsx scripts/eval.ts",
     "migrate": "tsx scripts/migrate.ts",
     "agent-prompt": "tsx scripts/print-agent-prompt.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "push-env": "tsx scripts/push-env.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
