@@ -9,7 +9,7 @@ function headline(c: CallRecord): string {
     case "escalate":
       return `URGENT: complaint from ${who}. Senior callback promised within 15 minutes.`;
     case "dropped":
-      return `Please call back: ${who}'s call dropped before we finished.`;
+      return `Please call back: ${who}'s call ended before we reached a decision.`;
     case "callback":
       return `Please call back: ${who} needs a senior person to take this forward.`;
     default:

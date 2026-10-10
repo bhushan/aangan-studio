@@ -1,6 +1,6 @@
 import { getDeps } from "../deps";
 import type { Deps } from "../handlers";
-import { isAuthorized } from "./adapter";
+import { bodyShape, isAuthorized } from "./adapter";
 
 /** Wraps a handler as a POST route: shared-secret check, JSON in, JSON out, bad input -> 400. */
 export function vaaniRoute(handler: (body: unknown, deps: Deps) => Promise<unknown>) {
@@ -16,6 +16,9 @@ export function vaaniRoute(handler: (body: unknown, deps: Deps) => Promise<unkno
     } catch {
       return Response.json({ error: "invalid JSON" }, { status: 400 });
     }
+    const path = new URL(req.url).pathname;
+    // Structure only, never values: shows what the voice platform actually sends to each tool.
+    if (!path.endsWith("/webhook")) console.info(`${path} body ${bodyShape(body)}`);
     try {
       return Response.json(await handler(body, getDeps()));
     } catch (err) {

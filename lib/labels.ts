@@ -13,7 +13,7 @@ export const OUTCOME: Record<Outcome, { label: string; tone: Tone }> = {
   close: { label: "Not a fit", tone: "muted" },
   escalate: { label: "Complaint", tone: "bad" },
   callback: { label: "Senior callback", tone: "warn" },
-  dropped: { label: "Call dropped", tone: "warn" },
+  dropped: { label: "No decision reached", tone: "warn" },
 };
 
 export const CLOSE_REASON: Record<CloseReason, string> = {
@@ -42,7 +42,7 @@ export const VERDICT: Record<Verdict, { label: string; tone: Tone }> = {
 export const NEXT_STEP: Partial<Record<Outcome, string>> = {
   escalate: "Existing client complaint. A senior person was promised to call back within 15 minutes.",
   callback: "The agent couldn't settle the details. A senior person should call back.",
-  dropped: "The call ended before we finished. Call back to complete the enquiry.",
+  dropped: "The call ended before the agent reached a decision. Call back to complete the enquiry.",
   qualified: "Qualified but no consultation booked. Call back to fix a time.",
   qualified_flagged: "Qualified but no consultation booked. Call back to fix a time.",
 };

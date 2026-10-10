@@ -36,6 +36,10 @@ describe("buildAgentPrompt", () => {
     expect(prompt.indexOf("is that right?")).toBeLessThan(prompt.indexOf(`Call ${TOOL_NAMES.qualify} with everything`));
   });
 
+  it("never confirms a booking the server did not confirm", () => {
+    expect(prompt).toContain("Only tell the caller they are booked when it returns booked: true.");
+  });
+
   it("names the tools exactly as Vaani registered them", () => {
     for (const name of ["submit_property_qualification", "create_vaani_slot", "book_vaani_slot"]) expect(prompt).toContain(name);
   });

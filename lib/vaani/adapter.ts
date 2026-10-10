@@ -148,3 +148,13 @@ export function parseVaaniEvent(raw: unknown) {
     summary: str(b.summary, data.summary),
   };
 }
+
+/** The structure of a request body with every value removed, for logs: "{name:string(6), size:number}". */
+export function bodyShape(v: unknown, depth = 0): string {
+  if (Array.isArray(v)) return `array(${v.length})`;
+  if (v === null) return "null";
+  if (typeof v === "string") return `string(${v.length})`;
+  if (typeof v !== "object") return typeof v;
+  if (depth > 2) return "object";
+  return `{${Object.entries(v as Record<string, unknown>).map(([k, x]) => `${k}:${bodyShape(x, depth + 1)}`).join(", ")}}`;
+}

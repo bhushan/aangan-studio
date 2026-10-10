@@ -163,7 +163,15 @@ export async function handleSlots(raw: unknown, deps: Deps): Promise<{ slots: Sl
 }
 
 export async function handleBook(raw: unknown, deps: Deps): Promise<{ booked: boolean; say: string }> {
-  const req = parseBookRequest(raw);
+  let req: ReturnType<typeof parseBookRequest>;
+  try {
+    req = parseBookRequest(raw);
+  } catch (err) {
+    // An error status lets the agent improvise "you're booked". Answer honestly instead;
+    // the call stays qualified, so designers get a "not booked yet" note to fix a time.
+    console.error("book: no usable slot_start", (err as Error).message);
+    return { booked: false, say: LINES.bookingFailed };
+  }
   const call = (req.vaaniCallId ? await deps.repo.findByVaaniId(req.vaaniCallId) : null) ?? (await openCall(deps));
   if (!call || !isQualified(call.route)) return { booked: false, say: LINES.notQualifiedForBooking };
   if (call.bookingUid && call.bookingAt) return { booked: true, say: LINES.booked(formatSlot(call.bookingAt)) };

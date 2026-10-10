@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bodyShape,
   isAuthorized,
   parseBookRequest,
   parseQualifyRequest,
@@ -154,5 +155,13 @@ describe("hardening against Vaani's tool templates", () => {
   it("reads a slot time without an offset as IST, not UTC", () => {
     expect(parseBookRequest({ slot_start: "2026-10-12T11:00:00" }).slotStart).toBe("2026-10-12T05:30:00.000Z");
     expect(parseBookRequest({ slot_start: "2026-10-12T05:30:00.000Z" }).slotStart).toBe("2026-10-12T05:30:00.000Z");
+  });
+});
+
+describe("bodyShape", () => {
+  it("describes the structure Vaani sent without any values", () => {
+    const shape = bodyShape({ call_id: "room-1", name: "Neelam", size_sqft: 1500, args: { locality: "Karve Nagar", empty: "" }, list: [1, 2] });
+    expect(shape).toBe("{call_id:string(6), name:string(6), size_sqft:number, args:{locality:string(11), empty:string(0)}, list:array(2)}");
+    expect(shape).not.toContain("Neelam");
   });
 });

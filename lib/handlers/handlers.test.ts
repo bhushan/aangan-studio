@@ -201,6 +201,14 @@ describe("Cal.com failures mid-call", () => {
 });
 
 describe("handleBook", () => {
+  it("never lets the agent claim a booking when the slot did not arrive", async () => {
+    const { deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })] });
+    const res = await handleBook({ call_id: "v_1" }, deps);
+    expect(res).toMatchObject({ booked: false });
+    expect(res.say).toMatch(/couldn't hold that slot/i);
+    expect(deps.calcom.book).not.toHaveBeenCalled();
+  });
+
   it("books a qualified caller and sends the designer handoff note", async () => {
     const { repo, deps, flush } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })] });
     const res = await handleBook({ call_id: "v_1", slot_start: "2026-10-02T05:30:00Z" }, deps);
