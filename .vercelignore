@@ -1,0 +1,4 @@
+# Secrets come from Vercel project settings, never from local files.
+.env
+.env.*
+!.env.example
