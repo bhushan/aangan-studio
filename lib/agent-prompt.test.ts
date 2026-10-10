@@ -1,0 +1,30 @@
+import { describe, expect, it } from "vitest";
+import { buildAgentPrompt, loadStudioFiles } from "./agent-prompt";
+
+describe("buildAgentPrompt", () => {
+  const prompt = buildAgentPrompt(loadStudioFiles());
+
+  it("never contains a price figure (the Cut)", () => {
+    expect(prompt).not.toMatch(/₹/);
+    expect(prompt).not.toMatch(/\blakhs?\b/i); // word match: "Pimple Nilakh" is a locality
+    expect(prompt).not.toMatch(/\d[\d,]*\s*(–|-|to)\s*[\d,]+\s*per\s*sq/i);
+    expect(prompt).not.toMatch(/per sq ?ft/i);
+  });
+
+  it("contains the approved pricing deflection line", () => {
+    expect(prompt).toContain("your designer will walk you through it in detail at the consultation");
+  });
+
+  it("carries the never-say list", () => {
+    expect(prompt).toContain("Our rates start at");
+  });
+
+  it("includes what the studio does and does not do", () => {
+    expect(prompt).toContain("What we don't do");
+    expect(prompt).toContain("PCMC");
+  });
+
+  it("tells the agent to use the qualify tool", () => {
+    expect(prompt).toContain("qualify");
+  });
+});
