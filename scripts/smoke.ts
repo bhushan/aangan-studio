@@ -1,5 +1,6 @@
 // Simulates Vaani calls against the deployed app, then reads the rows back from Neon.
-// Usage: npx tsx scripts/smoke.ts [--keep]   (test rows use room names starting with "smoke-" and are deleted unless --keep)
+// Usage: npm run smoke [-- --keep]   Test calls use room names starting with "smoke-". Unless --keep, their
+// Neon rows and the HubSpot records they created are deleted afterwards. Telegram messages stay.
 import "./load-env";
 import { neon } from "@neondatabase/serverless";
 import { env } from "../lib/env";
@@ -60,15 +61,24 @@ async function main() {
 
   const sql = neon(env("DATABASE_URL"));
   const rows = (await sql.query(
-    "select vaani_call_id, caller_number, route, close_reason, after_hours, duration_sec, voice_minutes, ai_cost_usd, ai_latency_ms, length(transcript) as transcript_len from calls where vaani_call_id like $1 order by created_at",
+    "select vaani_call_id, caller_number, route, close_reason, duration_sec, ai_cost_usd, ai_latency_ms, telegram_sent_at is not null as telegram, hubspot_contact_id, hubspot_call_id, hubspot_deal_id, hubspot_task_id from calls where vaani_call_id like $1 order by created_at",
     [`${run}%`],
   )) as Record<string, unknown>[];
   console.log("\n## Neon rows");
   console.table(rows.map((r) => ({ ...r, vaani_call_id: String(r.vaani_call_id).replace(`${run}-`, "") })));
 
   if (!process.argv.includes("--keep")) {
+    const token = process.env.HUBSPOT_TOKEN;
+    let removed = 0;
+    for (const r of token ? rows : []) {
+      for (const [type, id] of [["calls", r.hubspot_call_id], ["tasks", r.hubspot_task_id], ["deals", r.hubspot_deal_id], ["contacts", r.hubspot_contact_id]]) {
+        if (!id) continue;
+        const res = await fetch(`https://api.hubapi.com/crm/v3/objects/${type}/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+        if (res.ok) removed++;
+      }
+    }
     await sql.query("delete from calls where vaani_call_id like $1", [`${run}%`]);
-    console.log("test rows deleted (pass --keep to keep them)");
+    console.log(`test rows deleted, ${removed} HubSpot records removed (pass --keep to keep them)`);
   }
 }
 
