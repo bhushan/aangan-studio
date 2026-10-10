@@ -2,7 +2,8 @@
 //   npm run smoke                        five test calls, removed afterwards ("smoke-" room names)
 //   npm run smoke -- --keep              same, but keep them
 //   npm run smoke -- --demo --keep       the September phone enquiries as realistic calls ("demo-" room names)
-//   npm run smoke -- --purge <prefix>    remove kept calls, e.g. --purge demo-  (Neon rows, HubSpot records, Cal.com bookings)
+//   npm run smoke -- --purge <prefix>    remove kept or browser-test calls, e.g. --purge demo- or --purge webrtc-
+//                                        (Neon rows, HubSpot records, Cal.com bookings)
 // Unless --keep, Neon rows, HubSpot records and Cal.com bookings are removed afterwards. Telegram messages stay.
 import "./load-env";
 import { neon } from "@neondatabase/serverless";
@@ -112,7 +113,8 @@ async function main() {
   const purgeAt = process.argv.indexOf("--purge");
   if (purgeAt !== -1) {
     const prefix = process.argv[purgeAt + 1];
-    if (!prefix || !/^(smoke|demo)-/.test(prefix)) throw new Error("--purge needs a prefix starting with smoke- or demo-");
+    // webrtc- = calls placed from Vaani's in-browser tester, never from a real phone line.
+    if (!prefix || !/^(smoke|demo|webrtc)-/.test(prefix)) throw new Error("--purge needs a prefix starting with smoke-, demo- or webrtc-");
     return purge(prefix);
   }
   if (demo) {
