@@ -76,7 +76,7 @@ Model: ${process.env.QUALIFY_MODEL || "gemini-3.8-flash"} · ${new Date().toISOS
 - Route accuracy: **${passed}/${results.length}**
 - False "qualified" on enquiries that should close: **${falseQualified.length}** ${falseQualified.map((x) => x.e.id).join(", ")}
 - Complaints not escalated: **${missedComplaints.length}** ${missedComplaints.map((x) => x.e.id).join(", ")}
-- Latency p50 ${p(0.5)} ms, p95 ${p(0.95)} ms (live calls time out at 2,500 ms)
+- Latency p50 ${p(0.5)} ms, p95 ${p(0.95)} ms (live calls time out at 2,000 ms)
 - AI cost for the run: $${cost.toFixed(4)} (${results.length ? `$${(cost / results.length).toFixed(5)} per check` : "-"})
 
 Labels are drafts in \`studio/transcripts/labels.json\` and need Nikhil's review.

@@ -77,7 +77,7 @@ export function createNeonRepo(databaseUrl: string): CallsRepo {
     findById: (id) => one("select * from calls where id = $1", [id]),
 
     async create(c) {
-      // Concurrent first requests for the same call (qualify racing call-ended) resolve to one row.
+      // Concurrent first requests for the same call (a tool call racing the webhook) resolve to one row.
       const row = await one(
         `insert into calls (vaani_call_id, caller_number, started_at, answered_at, after_hours)
          values ($1, $2, $3, $4, $5)
@@ -99,6 +99,9 @@ export function createNeonRepo(databaseUrl: string): CallsRepo {
       if (!row) throw new Error(`No call ${id}`);
       return row;
     },
+
+    latestOpen: (since) =>
+      one("select * from calls where ended_at is null and started_at >= $1 order by started_at desc limit 1", [since]),
 
     async priorCalls(number, before) {
       const rows = (await sql.query(

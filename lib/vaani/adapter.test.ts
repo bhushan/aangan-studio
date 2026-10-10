@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   isAuthorized,
   parseBookRequest,
-  parseCallEnded,
   parseQualifyRequest,
+  parseVaaniEvent,
 } from "./adapter";
 
 describe("isAuthorized", () => {
@@ -45,8 +45,8 @@ describe("parseQualifyRequest", () => {
     expect(r.answers.locality).toBe("Baner");
   });
 
-  it("throws without a call id", () => {
-    expect(() => parseQualifyRequest({ answers: {} })).toThrow(/call id/i);
+  it("returns a null call id when Vaani does not send one", () => {
+    expect(parseQualifyRequest({ answers: {} }).vaaniCallId).toBeNull();
   });
 });
 
@@ -60,24 +60,52 @@ describe("parseBookRequest", () => {
   });
 });
 
-describe("parseCallEnded", () => {
-  it("flattens a turn-by-turn transcript", () => {
-    const r = parseCallEnded({
-      call_id: "v_1",
-      started_at: "2026-10-01T17:00:00Z",
-      ended_at: "2026-10-01T17:04:00Z",
-      transcript: [
-        { role: "agent", text: "Aangan Studio, how can I help?" },
-        { role: "user", content: "I want to redo my flat." },
-      ],
+describe("parseVaaniEvent (Vaani account webhook)", () => {
+  it("reads an inbound call_started", () => {
+    expect(parseVaaniEvent({ event: "call_started", room_name: "room_1", phone_number: "+910000000001" })).toMatchObject({
+      event: "call_started",
+      vaaniCallId: "room_1",
+      callerNumber: "+910000000001",
     });
-    expect(r.transcript).toBe("Agent: Aangan Studio, how can I help?\nCaller: I want to redo my flat.");
-    expect(r.durationSec).toBe(240);
-    expect(r.voiceMinutes).toBe(4);
   });
 
-  it("keeps a plain-text transcript and explicit duration", () => {
-    const r = parseCallEnded({ call_id: "v_1", transcript: "hello", duration_sec: 61 });
-    expect(r).toMatchObject({ transcript: "hello", durationSec: 61, voiceMinutes: 2 });
+  it("reads call_ended duration in seconds", () => {
+    expect(parseVaaniEvent({ event: "call_ended", room_name: "room_1", call_duration: 42.5 })).toMatchObject({
+      event: "call_ended",
+      durationSec: 43,
+      voiceMinutes: 1,
+    });
+  });
+
+  it("reads call_postprocessing: nested data, duration in ms, timestamped transcript", () => {
+    const r = parseVaaniEvent({
+      event: "call_postprocessing",
+      call_id: "room_1",
+      data: {
+        room_name: "room_1",
+        call_duration: 125150.02,
+        summary: "Wants a 3BHK redesign",
+        transcript: "[13:33:14] AGENT: Aangan Studio, how can I help?\n\n[13:33:19] USER: I want to redo my flat.",
+      },
+    });
+    expect(r).toMatchObject({ event: "call_postprocessing", vaaniCallId: "room_1", durationSec: 125, voiceMinutes: 3 });
+    expect(r.transcript).toBe("[13:33:14] Agent: Aangan Studio, how can I help?\n[13:33:19] Caller: I want to redo my flat.");
+  });
+
+  it("throws without an event name", () => {
+    expect(() => parseVaaniEvent({ room_name: "room_1" })).toThrow(/event/i);
+  });
+});
+
+describe("tool requests without a call id", () => {
+  it("qualify reads flat arguments and leaves the call id empty", () => {
+    const r = parseQualifyRequest({ name: "Priya", locality: "Kothrud" });
+    expect(r.vaaniCallId).toBeNull();
+    expect(r.answers).toMatchObject({ name: "Priya", locality: "Kothrud" });
+  });
+
+  it("accepts the secret as a query parameter for the dashboard webhook URL", () => {
+    expect(isAuthorized(new Headers(), "s3cret", new URL("https://x.test/api/vaani/webhook?secret=s3cret"))).toBe(true);
+    expect(isAuthorized(new Headers(), "s3cret", new URL("https://x.test/api/vaani/webhook?secret=nope"))).toBe(false);
   });
 });

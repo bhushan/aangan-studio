@@ -23,9 +23,11 @@ Scope: incoming phone calls only. See "Extending to WhatsApp and the web form" b
    | Existing-client complaint | `escalate` | urgent Telegram + HubSpot task for Nikhil |
 
 3. Qualified: `POST /api/vaani/slots` then `POST /api/vaani/book` (Cal.com). Designers get the Telegram note.
-4. Call ends: `POST /api/vaani/call-ended` stores the transcript and minutes, marks unfinished calls
-   `dropped` (call-back note), and syncs the call to HubSpot: contact by phone, a call log with the
-   criteria and transcript link, a deal at "Consultation booked" when booked, a task for complaints.
+4. Vaani's account webhook posts every call event to `POST /api/vaani/webhook`. `call_started`
+   creates the row with the caller's number; `call_ended` marks unfinished calls `dropped`
+   (call-back note) and syncs the call to HubSpot: contact by phone, a call log with the criteria
+   and transcript link, a deal at "Consultation booked" when booked, a task for complaints.
+   `call_postprocessing` adds the transcript and updates the same HubSpot records.
 
 **Pricing is never quoted.** Nikhil asked for per-sq-ft quotes on the call, but `pricing.md` says no
 number may be quoted, so the agent prompt only receives the never-say list and the deflection line.
@@ -33,19 +35,21 @@ number may be quoted, so the agent prompt only receives the never-say list and t
 
 ## Vaani tool contract
 
-All four endpoints take JSON and require the shared secret as `x-aangan-secret: <VAANI_TOOL_SECRET>`
-(or `Authorization: Bearer <secret>`). Vaani payload variants are normalised in `lib/vaani/adapter.ts`.
+Every endpoint takes JSON and requires the shared secret as `x-aangan-secret: <VAANI_TOOL_SECRET>`,
+`Authorization: Bearer <secret>`, or `?secret=` (the dashboard webhook only takes a URL). Vaani's
+payloads are normalised in `lib/vaani/adapter.ts`. Tools are cURL templates in the Vaani dashboard;
+when a tool request has no call id it attaches to the call in progress.
 
 ```jsonc
-// POST /api/vaani/qualify
-{ "call_id": "abc", "caller_number": "+91...", "answers": {
+// POST /api/vaani/qualify   (call_id optional; fields may also be sent flat)
+{ "call_id": "abc", "answers": {
     "name": "", "locality": "", "property_type": "home|office|other", "scope": "",
     "size_sqft": 0, "completion": "", "decision_maker": "", "budget_volunteered": "", "notes": "" } }
 // -> { "route": "ask", "say": "When would you need it complete?", "next_step": "ask|offer_slots|end_call", "ask_about": "timeline" }
 
 // POST /api/vaani/slots       { "call_id": "abc" }                       -> { "slots": [{ "start", "label" }], "say" }
 // POST /api/vaani/book        { "call_id": "abc", "slot_start": "ISO" }  -> { "booked": true, "say" }
-// POST /api/vaani/call-ended  { "call_id": "abc", "started_at", "ended_at", "duration_sec", "transcript": "..." | [{ "role", "text" }] }
+// POST /api/vaani/webhook     Vaani events: call_started, user_picked_up_at, call_ended, call_postprocessing
 ```
 
 ## Setup
@@ -56,8 +60,10 @@ All four endpoints take JSON and require the shared secret as `x-aangan-secret: 
 4. `npm run migrate`
 5. `npx tsx scripts/hubspot-setup.ts` creates the custom contact properties and prints pipeline,
    stage and owner ids for `.env`.
-6. `npm run agent-prompt` prints the Vaani system prompt. Paste it into the Vaani agent and register
-   the four tools above with the shared secret header.
+6. Vaani: create an agent in the dashboard and attach a phone number, then run
+   `npx tsx scripts/vaani-setup.ts` (lists agents) and `npx tsx scripts/vaani-setup.ts <agent_id> [+91inbound]`.
+   It pushes the system prompt and greeting through the API and prints the webhook URL and the
+   three tool cURLs to paste in the dashboard. `npm run agent-prompt` prints just the prompt.
 7. Deploy by hand: `vercel deploy` (preview), `vercel deploy --prod`.
 
 ## Tests and eval

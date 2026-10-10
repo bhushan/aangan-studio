@@ -8,6 +8,8 @@ export interface CallsRepo {
   findById(id: string): Promise<CallRecord | null>;
   create(call: NewCall): Promise<CallRecord>;
   update(id: string, patch: CallPatch): Promise<CallRecord>;
+  /** Most recent call that started after `since` and has not ended. Used when a tool omits the call id. */
+  latestOpen(since: Date): Promise<CallRecord | null>;
   /** Earlier calls from the same number, newest first. */
   priorCalls(callerNumber: string, beforeStartedAt: Date): Promise<CallRecord[]>;
 }

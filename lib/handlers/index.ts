@@ -8,7 +8,8 @@ import { ASK_FALLBACK, CLOSE_LINES, LINES } from "../rubric/lines";
 import { decideRoute, type Decision } from "../rubric/route";
 import type { Answers, Assessment } from "../rubric/schema";
 import { formatSlot, isAfterHours } from "../time";
-import { parseBookRequest, parseCallEnded, parseQualifyRequest, parseSlotsRequest } from "../vaani/adapter";
+import { randomUUID } from "node:crypto";
+import { parseBookRequest, parseQualifyRequest, parseSlotsRequest, parseVaaniEvent, type VaaniEvent } from "../vaani/adapter";
 
 // Request handlers behind the four /api/vaani/* routes. Route files stay thin; all I/O comes in as deps.
 
@@ -29,15 +30,20 @@ export type Deps = {
 type NextStep = "ask" | "offer_slots" | "end_call";
 export type QualifyResponse = { route: Route; say: string; next_step: NextStep; ask_about: string | null };
 
+// A tool request without a call id belongs to the call in progress (Vaani's call_started creates it).
+const OPEN_CALL_WINDOW_MS = 60 * 60 * 1000;
+
 async function findOrCreate(
   deps: Deps,
-  meta: { vaaniCallId: string; callerNumber: string | null; startedAt: Date | null; answeredAt: Date | null },
+  meta: { vaaniCallId: string | null; callerNumber: string | null; startedAt: Date | null; answeredAt: Date | null },
 ): Promise<CallRecord> {
-  const existing = await deps.repo.findByVaaniId(meta.vaaniCallId);
+  const existing = meta.vaaniCallId
+    ? await deps.repo.findByVaaniId(meta.vaaniCallId)
+    : await deps.repo.latestOpen(new Date(deps.now().getTime() - OPEN_CALL_WINDOW_MS));
   if (existing) return existing;
   const startedAt = meta.startedAt ?? deps.now();
   return deps.repo.create({
-    vaaniCallId: meta.vaaniCallId,
+    vaaniCallId: meta.vaaniCallId ?? `unlinked-${randomUUID()}`,
     callerNumber: meta.callerNumber,
     startedAt,
     answeredAt: meta.answeredAt ?? startedAt,
@@ -110,7 +116,9 @@ export async function handleSlots(raw: unknown, deps: Deps): Promise<{ slots: Sl
 
 export async function handleBook(raw: unknown, deps: Deps): Promise<{ booked: boolean; say: string }> {
   const req = parseBookRequest(raw);
-  const call = await deps.repo.findByVaaniId(req.vaaniCallId);
+  const call = req.vaaniCallId
+    ? await deps.repo.findByVaaniId(req.vaaniCallId)
+    : await deps.repo.latestOpen(new Date(deps.now().getTime() - OPEN_CALL_WINDOW_MS));
   if (!call || !isQualified(call.route)) return { booked: false, say: LINES.notQualifiedForBooking };
 
   const booking = await deps.calcom.book({
@@ -129,20 +137,45 @@ export async function handleBook(raw: unknown, deps: Deps): Promise<{ booked: bo
 
 const UNFINISHED: (Route | null)[] = [null, "ask"];
 
-/** Post-call webhook. Finalises the row, sends any pending designer note, and syncs every call to HubSpot. */
-export async function handleCallEnded(raw: unknown, deps: Deps): Promise<{ ok: boolean; errors: string[] }> {
-  const req = parseCallEnded(raw);
-  const call = await findOrCreate(deps, req);
+type WebhookResult = { ok: boolean; errors: string[] };
+
+/** Vaani's account webhook. One URL receives every call lifecycle event. */
+export async function handleWebhook(raw: unknown, deps: Deps): Promise<WebhookResult> {
+  const ev = parseVaaniEvent(raw);
+  const meta = { vaaniCallId: ev.vaaniCallId, callerNumber: ev.callerNumber, startedAt: ev.at, answeredAt: null };
+  switch (ev.event) {
+    case "call_started": {
+      const call = await findOrCreate(deps, meta);
+      if (!call.callerNumber && ev.callerNumber) await deps.repo.update(call.id, { callerNumber: ev.callerNumber });
+      return { ok: true, errors: [] };
+    }
+    case "user_picked_up_at": {
+      const call = await findOrCreate(deps, meta);
+      if (!call.answeredAt) await deps.repo.update(call.id, { answeredAt: ev.at ?? deps.now() });
+      return { ok: true, errors: [] };
+    }
+    case "call_ended":
+    case "call_postprocessing":
+      return finalize(ev, deps);
+    default:
+      return { ok: true, errors: [] };
+  }
+}
+
+/**
+ * Runs on call_ended and again on call_postprocessing (which brings the transcript).
+ * Sends any pending designer note once, and syncs every call to HubSpot (idempotent updates).
+ */
+async function finalize(ev: VaaniEvent, deps: Deps): Promise<WebhookResult> {
+  const call = await findOrCreate(deps, { vaaniCallId: ev.vaaniCallId, callerNumber: ev.callerNumber, startedAt: null, answeredAt: null });
 
   let final = await deps.repo.update(call.id, {
-    callerNumber: call.callerNumber ?? req.callerNumber,
-    endedAt: req.endedAt ?? deps.now(),
-    durationSec: req.durationSec,
-    voiceMinutes: req.voiceMinutes,
-    transcript: req.transcript,
+    callerNumber: call.callerNumber ?? ev.callerNumber,
+    endedAt: call.endedAt ?? deps.now(),
+    ...(ev.durationSec !== null ? { durationSec: ev.durationSec, voiceMinutes: ev.voiceMinutes } : {}),
+    ...(ev.transcript ? { transcript: ev.transcript } : {}),
     ...(UNFINISHED.includes(call.route) ? { route: "dropped" as const } : {}),
   });
-
   const errors: string[] = [];
   const needsNote =
     !final.telegramSentAt &&

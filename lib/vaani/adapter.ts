@@ -1,8 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { answersSchema, type Answers } from "../rubric/schema";
 
-// Vaani's tool and webhook payloads are not public. Everything Vaani-shaped is normalised here,
-// so the rest of the app only sees our own contract. Adjust the pickers after the first live call.
+// Everything Vaani-shaped is normalised here, so the rest of the app only sees our own contract.
+// Webhook events follow https://docs.vaanivoice.ai/guides/webhook-setup. Custom tools are cURL
+// templates whose body shape Vaani's LLM fills in, so tool parsing is deliberately lenient.
 
 type Body = Record<string, unknown>;
 
@@ -19,9 +20,14 @@ const obj = (v: unknown): Body => {
 const str = (...vs: unknown[]) => vs.find((v): v is string => typeof v === "string" && v.length > 0) ?? null;
 const date = (v: unknown) => (typeof v === "string" || typeof v === "number" ? new Date(v) : null);
 
-export function isAuthorized(headers: Headers, secret: string | undefined): boolean {
+/** Shared secret via header, bearer token, or `?secret=` (the Vaani dashboard webhook takes only a URL). */
+export function isAuthorized(headers: Headers, secret: string | undefined, url?: URL): boolean {
   if (!secret) return false;
-  const given = headers.get("x-aangan-secret") ?? headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  const given =
+    headers.get("x-aangan-secret") ??
+    headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    url?.searchParams.get("secret") ??
+    "";
   const a = Buffer.from(given);
   const b = Buffer.from(secret);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -30,8 +36,7 @@ export function isAuthorized(headers: Headers, secret: string | undefined): bool
 function callMeta(raw: unknown) {
   const b = obj(raw);
   const call = obj(b.call);
-  const vaaniCallId = str(b.call_id, b.callId, call.id, call.call_id);
-  if (!vaaniCallId) throw new Error("Missing call id");
+  const vaaniCallId = str(b.call_id, b.callId, b.room_name, call.id, call.call_id);
   return {
     b,
     vaaniCallId,
@@ -42,7 +47,8 @@ function callMeta(raw: unknown) {
 }
 
 function toolArgs(b: Body): Body {
-  return obj(b.answers ?? b.arguments ?? b.args ?? b.parameters ?? b.input);
+  const nested = b.answers ?? b.arguments ?? b.args ?? b.parameters ?? b.input;
+  return nested === undefined ? b : obj(nested);
 }
 
 export function parseQualifyRequest(raw: unknown) {
@@ -71,38 +77,52 @@ export function parseBookRequest(raw: unknown) {
   return { vaaniCallId: meta.vaaniCallId, slotStart: d.toISOString(), name: str(args.name, meta.b.name) };
 }
 
+const SPEAKER = (role: string) => (/agent|assistant|bot/i.test(role) ? "Agent" : "Caller");
+
 function flattenTranscript(t: unknown): string | null {
-  if (typeof t === "string") return t;
+  if (typeof t === "string") {
+    // Vaani: "[13:33:14] AGENT: text\n\n[13:33:19] USER: text"
+    return t
+      .split(/\n+/)
+      .filter((l) => l.trim())
+      .map((l) => l.replace(/^(\[[^\]]*\]\s*)?(AGENT|ASSISTANT|BOT|USER|CALLER)\s*:/i, (_m, ts = "", who) => `${ts}${SPEAKER(who)}:`))
+      .join("\n");
+  }
   if (!Array.isArray(t)) return null;
   return t
     .map((turn) => {
       const o = obj(turn);
-      const role = str(o.role, o.speaker) ?? "";
-      const who = /agent|assistant|bot/i.test(role) ? "Agent" : "Caller";
-      return `${who}: ${str(o.text, o.content, o.message) ?? ""}`;
+      return `${SPEAKER(str(o.role, o.speaker) ?? "")}: ${str(o.text, o.content, o.message) ?? ""}`;
     })
     .join("\n");
 }
 
-export function parseCallEnded(raw: unknown) {
-  const meta = callMeta(raw);
-  const b = meta.b;
-  const call = obj(b.call);
-  const endedAt = date(b.ended_at ?? call.ended_at ?? call.endedAt);
-  const explicit = Number(b.duration_sec ?? b.duration ?? call.duration);
-  const durationSec = Number.isFinite(explicit) && explicit > 0
-    ? Math.round(explicit)
-    : meta.startedAt && endedAt
-      ? Math.round((endedAt.getTime() - meta.startedAt.getTime()) / 1000)
-      : null;
+export type VaaniEvent = ReturnType<typeof parseVaaniEvent>;
+
+/** Account-level Vaani webhook: call_started, user_picked_up_at, call_ended, call_postprocessing, ... */
+export function parseVaaniEvent(raw: unknown) {
+  const b = obj(raw);
+  const event = str(b.event);
+  if (!event) throw new Error("Missing event name");
+  const data = obj(b.data);
+  const vaaniCallId = str(b.room_name, b.call_id, data.room_name, data.call_id);
+  if (!vaaniCallId) throw new Error("Missing call id (room_name)");
+
+  // call_ended reports seconds; call_postprocessing reports milliseconds.
+  const rawDuration = Number(b.call_duration ?? data.call_duration);
+  const durationSec = Number.isFinite(rawDuration) && rawDuration > 0
+    ? Math.round(event === "call_postprocessing" ? rawDuration / 1000 : rawDuration)
+    : null;
+  const at = date(b.timestamp ?? data.timestamp);
+
   return {
-    vaaniCallId: meta.vaaniCallId,
-    callerNumber: meta.callerNumber,
-    startedAt: meta.startedAt,
-    answeredAt: meta.answeredAt,
-    endedAt,
+    event,
+    vaaniCallId,
+    callerNumber: str(b.phone_number, b.caller_number, b.from, data.phone_number, data.caller_number),
+    at: at && !Number.isNaN(at.getTime()) ? at : null,
     durationSec,
     voiceMinutes: durationSec === null ? null : Math.ceil(durationSec / 60),
-    transcript: flattenTranscript(b.transcript ?? call.transcript),
+    transcript: flattenTranscript(b.transcript ?? data.transcript),
+    summary: str(b.summary, data.summary),
   };
 }

@@ -7,12 +7,12 @@ import { parseEnv } from "node:util";
 const wanted = Object.keys(parseEnv(fs.readFileSync(".env.example", "utf8")));
 const local = parseEnv(fs.readFileSync(".env", "utf8"));
 // DATABASE_URL comes from the Neon integration.
-const managedByVercel = new Set(["DATABASE_URL"]);
+const managedByVercel = new Set(["DATABASE_URL", "VAANI_API_KEY"]); // VAANI_API_KEY is only for local setup
 
 for (const key of wanted) {
   const value = local[key];
   if (managedByVercel.has(key) || !value) {
-    console.log(`skip  ${key}${value ? " (managed by Vercel)" : " (empty in .env)"}`);
+    console.log(`skip  ${key}${value ? " (not pushed)" : " (empty in .env)"}`);
     continue;
   }
   const res = spawnSync("vercel", ["env", "add", key, "production,preview", "--force", "--sensitive", "--yes"], {

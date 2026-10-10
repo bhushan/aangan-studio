@@ -5,7 +5,7 @@ import { isAuthorized } from "./adapter";
 /** Wraps a handler as a POST route: shared-secret check, JSON in, JSON out, bad input -> 400. */
 export function vaaniRoute(handler: (body: unknown, deps: Deps) => Promise<unknown>) {
   return async function POST(req: Request): Promise<Response> {
-    if (!isAuthorized(req.headers, process.env.VAANI_TOOL_SECRET)) {
+    if (!isAuthorized(req.headers, process.env.VAANI_TOOL_SECRET, new URL(req.url))) {
       return Response.json({ error: "unauthorized" }, { status: 401 });
     }
     let body: unknown;

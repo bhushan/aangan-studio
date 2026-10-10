@@ -49,7 +49,8 @@ export function createAssess(cfg: { files: StudioFiles; model?: string; timeoutM
       output: Output.object({ schema: assessmentSchema }),
       temperature: 0,
       maxRetries: 0,
-      timeout: cfg.timeoutMs ?? 2500,
+      // Vaani expects a tool reply within 2-3 s; leave room for the database writes.
+      timeout: cfg.timeoutMs ?? 2000,
       // Minimal thinking keeps a mid-call check fast; the rubric is a classification, not a puzzle.
       providerOptions: { google: { thinkingConfig: { thinkingLevel: "minimal" } } },
     });

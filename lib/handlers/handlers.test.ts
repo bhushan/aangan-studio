@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleBook, handleCallEnded, handleQualify, handleSlots, type Deps } from "./index";
+import { handleBook, handleQualify, handleSlots, handleWebhook, type Deps } from "./index";
 import { createMemoryRepo } from "../calls/memory-repo";
 import { makeCall } from "../calls/fixtures";
 import type { Assessment, CriterionKey, Verdict } from "../rubric/schema";
@@ -133,40 +133,54 @@ describe("handleBook", () => {
   });
 });
 
-describe("handleCallEnded", () => {
-  const ended = { call_id: "v_1", ended_at: "2026-10-01T17:04:00Z", duration_sec: 240, transcript: "Agent: hi\nCaller: hello" };
+describe("handleWebhook", () => {
+  const ended = { event: "call_ended", room_name: "v_1", call_duration: 240 };
+  const post = {
+    event: "call_postprocessing",
+    call_id: "v_1",
+    data: { room_name: "v_1", call_duration: 240000, transcript: "[10:00:00] AGENT: hi\n\n[10:00:02] USER: hello" },
+  };
 
-  it("syncs every call to HubSpot, including rejected ones", async () => {
+  it("creates the call row on call_started with the caller's number", async () => {
+    const { repo, deps } = setup();
+    await handleWebhook({ event: "call_started", room_name: "v_9", phone_number: "+910000000009" }, deps);
+    expect(repo.all()[0]).toMatchObject({ vaaniCallId: "v_9", callerNumber: "+910000000009", afterHours: true });
+  });
+
+  it("syncs every call to HubSpot on call_ended, including rejected ones", async () => {
     const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "close", closeReason: "outside_service_area" })] });
-    const res = await handleCallEnded(ended, deps);
+    const res = await handleWebhook(ended, deps);
     expect(res.ok).toBe(true);
-    expect(deps.hubspot.syncCall).toHaveBeenCalledWith(expect.objectContaining({ route: "close", transcript: "Agent: hi\nCaller: hello" }));
+    expect(deps.hubspot.syncCall).toHaveBeenCalledWith(expect.objectContaining({ route: "close" }));
     expect(repo.all()[0]).toMatchObject({ hubspotContactId: "ct_1", hubspotCallId: "hc_1", durationSec: 240, voiceMinutes: 4 });
+  });
+
+  it("adds the transcript on call_postprocessing and re-syncs HubSpot without a second Telegram", async () => {
+    const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })] });
+    await handleWebhook(ended, deps);
+    await handleWebhook(post, deps);
+    expect(repo.all()[0].transcript).toBe("[10:00:00] Agent: hi\n[10:00:02] Caller: hello");
+    expect(deps.hubspot.syncCall).toHaveBeenCalledTimes(2);
+    expect(deps.hubspot.syncCall).toHaveBeenLastCalledWith(expect.objectContaining({ transcript: expect.stringContaining("Agent: hi") }));
+    expect(deps.telegram.send).toHaveBeenCalledTimes(1);
   });
 
   it("marks a call that ended before a decision as dropped and asks for a call back", async () => {
     const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "ask" })] });
-    await handleCallEnded(ended, deps);
+    await handleWebhook(ended, deps);
     expect(repo.all()[0].route).toBe("dropped");
     expect(deps.telegram.send).toHaveBeenCalledWith(expect.stringMatching(/call back/i));
   });
 
-  it("creates a row for a call that never reached qualify", async () => {
-    const { repo, deps } = setup();
-    await handleCallEnded({ ...ended, caller_number: "+910000000009", started_at: "2026-10-01T17:00:00Z" }, deps);
-    expect(repo.all()[0]).toMatchObject({ route: "dropped", callerNumber: "+910000000009" });
-    expect(deps.hubspot.syncCall).toHaveBeenCalled();
-  });
-
   it("sends a handoff note for a qualified caller who did not book", async () => {
     const { deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })] });
-    await handleCallEnded(ended, deps);
+    await handleWebhook(ended, deps);
     expect(deps.telegram.send).toHaveBeenCalledWith(expect.stringContaining("not booked"));
   });
 
   it("does not resend Telegram when the note already went out", async () => {
     const { deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified", telegramSentAt: new Date() })] });
-    await handleCallEnded(ended, deps);
+    await handleWebhook(ended, deps);
     expect(deps.telegram.send).not.toHaveBeenCalled();
   });
 
@@ -175,9 +189,29 @@ describe("handleCallEnded", () => {
     deps.telegram.send = vi.fn(async () => {
       throw new Error("telegram down");
     });
-    const res = await handleCallEnded(ended, deps);
+    const res = await handleWebhook(ended, deps);
     expect(res.ok).toBe(false);
     expect(res.errors).toEqual([expect.stringContaining("telegram down")]);
     expect(repo.all()[0].hubspotCallId).toBe("hc_1");
+  });
+
+  it("acknowledges events it does not use", async () => {
+    const { deps } = setup();
+    expect(await handleWebhook({ event: "call_ringing", room_name: "v_1" }, deps)).toEqual({ ok: true, errors: [] });
+  });
+});
+
+describe("tools without a call id", () => {
+  it("attach to the call that is currently open", async () => {
+    const { repo, deps } = setup({
+      seed: [
+        makeCall({ id: "old", vaaniCallId: "v_old", startedAt: new Date("2026-10-01T15:00:00Z"), endedAt: new Date("2026-10-01T15:05:00Z") }),
+        makeCall({ id: "live", vaaniCallId: "v_live", startedAt: new Date("2026-10-01T16:58:00Z"), answers: {} }),
+      ],
+    });
+    await handleQualify({ name: "Priya", locality: "Kothrud" }, deps);
+    const live = repo.all().find((c) => c.id === "live")!;
+    expect(live).toMatchObject({ route: "qualified", answers: { name: "Priya", locality: "Kothrud" } });
+    expect(repo.all()).toHaveLength(2);
   });
 });
