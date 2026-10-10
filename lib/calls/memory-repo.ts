@@ -5,6 +5,7 @@ import type { CallRecord } from "./types";
 export function createMemoryRepo(seed: CallRecord[] = []): CallsRepo & { all: () => CallRecord[] } {
   const rows = new Map(seed.map((c) => [c.id, structuredClone(c)]));
   let n = rows.size;
+  const locks = new Set<string>();
   return {
     all: () => [...rows.values()],
     async findByVaaniId(v) {
@@ -22,7 +23,7 @@ export function createMemoryRepo(seed: CallRecord[] = []): CallsRepo & { all: ()
         route: null,
         closeReason: null,
         flags: [],
-        askCount: 0,
+        askedAbout: [],
         bookingUid: null,
         bookingAt: null,
         hubspotContactId: null,
@@ -53,6 +54,29 @@ export function createMemoryRepo(seed: CallRecord[] = []): CallsRepo & { all: ()
           .filter((c) => c.endedAt === null && c.startedAt >= since)
           .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0] ?? null
       );
+    },
+    async claimTelegram(id, at) {
+      const row = rows.get(id)!;
+      if (row.telegramSentAt) return false;
+      rows.set(id, { ...row, telegramSentAt: at });
+      return true;
+    },
+    async releaseTelegram(id) {
+      rows.set(id, { ...rows.get(id)!, telegramSentAt: null });
+    },
+    async lockHubspot(id) {
+      if (locks.has(id)) return false;
+      locks.add(id);
+      return true;
+    },
+    async unlockHubspot(id) {
+      locks.delete(id);
+    },
+    async markDroppedIfUnfinished(id) {
+      const row = rows.get(id)!;
+      const next = row.route === null || row.route === "ask" ? { ...row, route: "dropped" as const } : row;
+      rows.set(id, next);
+      return next;
     },
     async priorCalls(number, before) {
       return [...rows.values()]

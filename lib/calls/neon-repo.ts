@@ -14,7 +14,7 @@ const COLUMNS = {
   route: "route",
   closeReason: "close_reason",
   flags: "flags",
-  askCount: "ask_count",
+  askedAbout: "asked_about",
   bookingUid: "booking_uid",
   bookingAt: "booking_at",
   hubspotContactId: "hubspot_contact_id",
@@ -49,7 +49,7 @@ export function toCall(r: Row): CallRecord {
     route: (r.route as CallRecord["route"]) ?? null,
     closeReason: (r.close_reason as CallRecord["closeReason"]) ?? null,
     flags: (r.flags as CallRecord["flags"]) ?? [],
-    askCount: Number(r.ask_count ?? 0),
+    askedAbout: (r.asked_about as CallRecord["askedAbout"]) ?? [],
     bookingUid: (r.booking_uid as string) ?? null,
     bookingAt: d(r.booking_at),
     hubspotContactId: (r.hubspot_contact_id as string) ?? null,
@@ -96,6 +96,32 @@ export function createNeonRepo(databaseUrl: string): CallsRepo {
         JSON_COLUMNS.has(COLUMNS[k as keyof typeof COLUMNS]) && v !== null ? JSON.stringify(v) : v,
       );
       const row = await one(`update calls set ${sets.join(", ")} where id = $1 returning *`, [id, ...params]);
+      if (!row) throw new Error(`No call ${id}`);
+      return row;
+    },
+
+    async claimTelegram(id, at) {
+      return (await one("update calls set telegram_sent_at = $2 where id = $1 and telegram_sent_at is null returning *", [id, at])) !== null;
+    },
+    async releaseTelegram(id) {
+      await sql.query("update calls set telegram_sent_at = null where id = $1", [id]);
+    },
+    async lockHubspot(id, ms) {
+      const row = await one(
+        `update calls set hubspot_lock_until = now() + ($2 || ' milliseconds')::interval
+         where id = $1 and (hubspot_lock_until is null or hubspot_lock_until < now()) returning *`,
+        [id, String(ms)],
+      );
+      return row !== null;
+    },
+    async unlockHubspot(id) {
+      await sql.query("update calls set hubspot_lock_until = null where id = $1", [id]);
+    },
+    async markDroppedIfUnfinished(id) {
+      const row = await one(
+        "update calls set route = case when route is null or route = 'ask' then 'dropped' else route end where id = $1 returning *",
+        [id],
+      );
       if (!row) throw new Error(`No call ${id}`);
       return row;
     },

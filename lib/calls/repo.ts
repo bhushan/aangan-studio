@@ -10,6 +10,15 @@ export interface CallsRepo {
   update(id: string, patch: CallPatch): Promise<CallRecord>;
   /** Most recent call that started after `since` and has not ended. Used when a tool omits the call id. */
   latestOpen(since: Date): Promise<CallRecord | null>;
+  /** Atomically marks the designer note as sent. False if another event already claimed it. */
+  claimTelegram(id: string, at: Date): Promise<boolean>;
+  /** Undo a claim when sending failed, so a later event can retry. */
+  releaseTelegram(id: string): Promise<void>;
+  /** Leases the HubSpot sync for `ms`. False while another event holds it. */
+  lockHubspot(id: string, ms: number): Promise<boolean>;
+  unlockHubspot(id: string): Promise<void>;
+  /** Sets route to "dropped" only if no decision was reached (route null or "ask"), atomically. */
+  markDroppedIfUnfinished(id: string): Promise<CallRecord>;
   /** Earlier calls from the same number, newest first. */
   priorCalls(callerNumber: string, beforeStartedAt: Date): Promise<CallRecord[]>;
 }

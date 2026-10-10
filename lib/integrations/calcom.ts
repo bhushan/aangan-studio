@@ -1,6 +1,8 @@
 import { formatSlot, STUDIO_TZ } from "../time";
 
 const BASE = "https://api.cal.com/v2";
+// These run mid-call; Vaani gives a tool 2-3 s, so a slow Cal.com must fail fast, not hang.
+const TIMEOUT_MS = 2000;
 
 export type Slot = { start: string; label: string };
 export type Calcom = {
@@ -27,7 +29,7 @@ export function createCalcom(cfg: { apiKey: string; eventTypeId: number; attende
         end: end.toISOString(),
         timeZone: STUDIO_TZ,
       });
-      const res = await f(`${BASE}/slots?${qs}`, { headers: { ...auth, "cal-api-version": "2024-09-04" } });
+      const res = await f(`${BASE}/slots?${qs}`, { headers: { ...auth, "cal-api-version": "2024-09-04" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (!res.ok) throw new Error(`Cal.com slots: ${res.status}`);
       const body = (await res.json()) as { data: Record<string, { start: string }[]> };
       return Object.values(body.data)
@@ -42,6 +44,7 @@ export function createCalcom(cfg: { apiKey: string; eventTypeId: number; attende
     async book({ start, name, phone, notes }) {
       const res = await f(`${BASE}/bookings`, {
         method: "POST",
+        signal: AbortSignal.timeout(TIMEOUT_MS),
         headers: { ...auth, "cal-api-version": "2026-02-25", "content-type": "application/json" },
         body: JSON.stringify({
           start,

@@ -66,6 +66,21 @@ when a tool request has no call id it attaches to the call in progress.
    three tool cURLs to paste in the dashboard. `npm run agent-prompt` prints just the prompt.
 7. Deploy by hand: `vercel deploy` (preview), `vercel deploy --prod`.
 
+## Testing the flow
+
+1. **Simulated calls** (no phone needed): `npm run smoke` plays Vaani's webhook events and tool
+   calls for five cases (qualified, outside area, complaint, dropped, tool without call id) against
+   `APP_URL`, prints what the agent would say and the resulting Neon rows, then deletes the rows.
+   Telegram/HubSpot records it creates (once those are configured) are real; remove them by hand.
+2. **A real call**: dial the number attached to the Front Desk agent. Try a qualified project
+   ("3BHK in Kothrud, done by March, I'm the owner"), an out-of-area one ("flat in Nashik"),
+   a price question (the agent must not give a number), and a complaint.
+3. **See what happened**: `npm run calls` lists recent calls; `npm run calls -- <id>` shows one
+   with criteria, evidence, integrations and transcript. Vercel function logs show any errors.
+
+Integrations switch on only when all their keys are set. Until then the call still completes and
+the skipped step is recorded (`npm run smoke` prints e.g. `"telegram: Telegram not configured"`).
+
 ## Tests and eval
 
 - `npm test`: routing rules, IST after-hours, pricing guardrail, handoff note, Vaani adapter,

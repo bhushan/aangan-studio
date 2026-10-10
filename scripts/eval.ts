@@ -47,7 +47,7 @@ async function main() {
     const label = labels[e.id];
     try {
       const r = await assess({}, { now: enquiryDate(e.header), transcript: `${e.header}\n${e.text}` });
-      const d: Decision = decideRoute(r.assessment, { askCount: 0 });
+      const d: Decision = decideRoute(r.assessment, { askedAbout: [] });
       const ok = matches(d.route, label.accept ?? []) && (!label.reason || d.route !== "close" || d.closeReason === label.reason);
       return { e, label, d, r, ok, error: null as string | null };
     } catch (err) {

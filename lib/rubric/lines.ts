@@ -28,6 +28,8 @@ export const LINES = {
     "I'm sorry about this. I'm getting it to our senior team right now, and someone senior will call you back within fifteen minutes.",
   callback:
     "Thank you. I'll have a senior person from our team call you back shortly to take this forward.",
+  bookingFailed:
+    "I'm sorry, I couldn't hold that slot just now. A designer will call you back shortly to fix a time that suits you.",
   notQualifiedForBooking: "I'll have someone from our team call you back to arrange the next step.",
   booked: (when: string) =>
     `You're booked for ${when}. Your designer will call you before then, and pricing is something they'll walk you through in detail at the consultation.`,

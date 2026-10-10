@@ -45,6 +45,7 @@ export function getDeps(): Deps {
     now: () => new Date(),
     dashboardUrl,
     defer: (fn) => after(fn),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
   return cached;
 }

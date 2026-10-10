@@ -49,6 +49,7 @@ function setup(opts: { seed?: CallRecord[]; result?: Assessment | Error } = {}) 
     now: () => new Date("2026-10-01T17:00:00Z"),
     dashboardUrl: "https://example.test",
     defer: (fn) => void pending.push(fn()),
+    sleep: async () => {},
   };
   const flush = () => Promise.all(pending.splice(0));
   return { repo, deps, flush };
@@ -73,7 +74,7 @@ describe("handleQualify", () => {
     await handleQualify({ call_id: "v_1", answers: { completion: "not sure" } }, deps);
     const [row] = repo.all();
     expect(row.answers).toMatchObject({ name: "Priya", completion: "not sure" });
-    expect(row.askCount).toBe(1);
+    expect(row.askedAbout).toEqual(["timeline"]);
     expect(row.route).toBe("callback");
     expect(row.aiCostUsd).toBeCloseTo(0.0008);
   });
@@ -104,12 +105,45 @@ describe("handleQualify", () => {
   });
 });
 
+describe("call records", () => {
+  it("leaves answeredAt empty until Vaani reports the pickup", async () => {
+    const { repo, deps } = setup();
+    await handleWebhook({ event: "call_started", room_name: "v_1", phone_number: "+910000000001" }, deps);
+    expect(repo.all()[0].answeredAt).toBeNull();
+    await handleWebhook({ event: "user_picked_up_at", room_name: "v_1" }, deps);
+    expect(repo.all()[0].answeredAt).toEqual(new Date("2026-10-01T17:00:00Z"));
+  });
+});
+
 describe("handleSlots", () => {
   it("returns spoken-friendly slots", async () => {
     const { deps } = setup();
     const res = await handleSlots({ call_id: "v_1" }, deps);
     expect(res.slots).toHaveLength(2);
     expect(res.say).toContain("Fri 2 Oct, 11:00 am");
+  });
+});
+
+describe("Cal.com failures mid-call", () => {
+  it("slots falls back to a designer callback instead of failing the tool", async () => {
+    const { deps } = setup();
+    deps.calcom.slots = vi.fn(async () => {
+      throw new Error("Cal.com slots: 503");
+    });
+    const res = await handleSlots({ call_id: "v_1" }, deps);
+    expect(res.slots).toEqual([]);
+    expect(res.say).toMatch(/designer call you back/);
+  });
+
+  it("book says the slot could not be held, and the call stays qualified for the handoff note", async () => {
+    const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })] });
+    deps.calcom.book = vi.fn(async () => {
+      throw new Error("Cal.com booking: slot taken");
+    });
+    const res = await handleBook({ call_id: "v_1", slot_start: "2026-10-02T05:30:00Z" }, deps);
+    expect(res.booked).toBe(false);
+    expect(res.say).toMatch(/couldn't hold that slot/);
+    expect(repo.all()[0]).toMatchObject({ route: "qualified", bookingUid: null });
   });
 });
 
@@ -123,6 +157,16 @@ describe("handleBook", () => {
     expect(deps.telegram.send).toHaveBeenCalledWith(expect.stringContaining("Priya"));
     expect(repo.all()[0]).toMatchObject({ bookingUid: "bk_1" });
     expect(repo.all()[0].telegramSentAt).not.toBeNull();
+  });
+
+  it("does not book twice if the agent repeats the tool call", async () => {
+    const { deps } = setup({
+      seed: [makeCall({ vaaniCallId: "v_1", route: "qualified", bookingUid: "bk_1", bookingAt: new Date("2026-10-02T05:30:00Z") })],
+    });
+    const res = await handleBook({ call_id: "v_1", slot_start: "2026-10-03T05:30:00Z" }, deps);
+    expect(res).toMatchObject({ booked: true });
+    expect(res.say).toContain("Fri 2 Oct, 11:00 am");
+    expect(deps.calcom.book).not.toHaveBeenCalled();
   });
 
   it("refuses to book a caller who did not qualify", async () => {
@@ -151,7 +195,7 @@ describe("handleWebhook", () => {
     const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "close", closeReason: "outside_service_area" })] });
     const res = await handleWebhook(ended, deps);
     expect(res.ok).toBe(true);
-    expect(deps.hubspot.syncCall).toHaveBeenCalledWith(expect.objectContaining({ route: "close" }));
+    expect(deps.hubspot.syncCall).toHaveBeenCalledWith(expect.objectContaining({ route: "close" }), expect.any(Function));
     expect(repo.all()[0]).toMatchObject({ hubspotContactId: "ct_1", hubspotCallId: "hc_1", durationSec: 240, voiceMinutes: 4 });
   });
 
@@ -161,7 +205,7 @@ describe("handleWebhook", () => {
     await handleWebhook(post, deps);
     expect(repo.all()[0].transcript).toBe("[10:00:00] Agent: hi\n[10:00:02] Caller: hello");
     expect(deps.hubspot.syncCall).toHaveBeenCalledTimes(2);
-    expect(deps.hubspot.syncCall).toHaveBeenLastCalledWith(expect.objectContaining({ transcript: expect.stringContaining("Agent: hi") }));
+    expect(deps.hubspot.syncCall).toHaveBeenLastCalledWith(expect.objectContaining({ transcript: expect.stringContaining("Agent: hi") }), expect.any(Function));
     expect(deps.telegram.send).toHaveBeenCalledTimes(1);
   });
 
@@ -193,6 +237,36 @@ describe("handleWebhook", () => {
     expect(res.ok).toBe(false);
     expect(res.errors).toEqual([expect.stringContaining("telegram down")]);
     expect(repo.all()[0].hubspotCallId).toBe("hc_1");
+  });
+
+  it("sends one Telegram note and one HubSpot sync when call_ended and call_postprocessing overlap", async () => {
+    const { deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })] });
+    await Promise.all([handleWebhook(ended, deps), handleWebhook(post, deps)]);
+    expect(deps.telegram.send).toHaveBeenCalledTimes(1);
+    // The lock holder re-syncs once if the other event changed the call (here: the transcript).
+    expect(deps.hubspot.syncCall).toHaveBeenLastCalledWith(expect.objectContaining({ transcript: expect.stringContaining("Agent: hi") }), expect.any(Function));
+  });
+
+  it("keeps HubSpot ids created before a later HubSpot step failed", async () => {
+    const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "escalate" })] });
+    deps.hubspot.syncCall = vi.fn(async (_c: CallRecord, save?: (ids: Partial<Record<string, string | null>>) => Promise<void>) => {
+      await save?.({ contactId: "ct_1", callId: "hc_1" });
+      throw new Error("task create failed");
+    });
+    const res = await handleWebhook(ended, deps);
+    expect(res.errors).toEqual(expect.arrayContaining([expect.stringContaining("task create failed")]));
+    expect(repo.all()[0]).toMatchObject({ hubspotContactId: "ct_1", hubspotCallId: "hc_1" });
+  });
+
+  it("does not overwrite a decision reached while the caller hung up", async () => {
+    const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: null })] });
+    const real = deps.repo.markDroppedIfUnfinished.bind(deps.repo);
+    deps.repo.markDroppedIfUnfinished = async (id) => {
+      await deps.repo.update(id, { route: "qualified" }); // qualify lands just before the drop check
+      return real(id);
+    };
+    await handleWebhook(ended, deps);
+    expect(repo.all()[0].route).toBe("qualified");
   });
 
   it("acknowledges events it does not use", async () => {

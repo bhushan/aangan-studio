@@ -15,7 +15,9 @@ export const CONTACT_PROPERTIES = [
 ] as const;
 
 export type HubspotIds = { contactId: string | null; callId: string | null; dealId: string | null; taskId: string | null };
-export type Hubspot = { syncCall(call: CallRecord): Promise<HubspotIds> };
+export type SaveIds = (ids: Partial<HubspotIds>) => Promise<void>;
+/** `save` persists each id as soon as it exists, so a later failure never causes a duplicate on retry. */
+export type Hubspot = { syncCall(call: CallRecord, save?: SaveIds): Promise<HubspotIds> };
 
 type Cfg = {
   token: string;
@@ -94,8 +96,9 @@ export function createHubspot(cfg: Cfg): Hubspot {
   }
 
   return {
-    async syncCall(c) {
+    async syncCall(c, save = async () => {}) {
       const contactId = await upsertContact(c);
+      if (contactId !== c.hubspotContactId) await save({ contactId });
 
       const callProps = {
         hs_timestamp: c.startedAt.toISOString(),
@@ -109,6 +112,7 @@ export function createHubspot(cfg: Cfg): Hubspot {
       const callId = c.hubspotCallId
         ? (await api("PATCH", `/calls/${c.hubspotCallId}`, { properties: callProps }), c.hubspotCallId)
         : (await api<{ id: string }>("POST", "/calls", { properties: callProps, associations: assoc(contactId, ASSOC.call) })).id;
+      if (callId !== c.hubspotCallId) await save({ callId });
 
       let dealId = c.hubspotDealId;
       if (!dealId && c.bookingUid && (c.route === "qualified" || c.route === "qualified_flagged")) {
@@ -122,6 +126,7 @@ export function createHubspot(cfg: Cfg): Hubspot {
           associations: assoc(contactId, ASSOC.deal),
         });
         dealId = deal.id;
+        await save({ dealId });
       }
 
       let taskId = c.hubspotTaskId;
@@ -138,6 +143,7 @@ export function createHubspot(cfg: Cfg): Hubspot {
           associations: assoc(contactId, ASSOC.task),
         });
         taskId = task.id;
+        await save({ taskId });
       }
 
       return { contactId, callId, dealId, taskId };

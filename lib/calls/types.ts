@@ -25,7 +25,8 @@ export type CallRecord = {
   route: Route | null;
   closeReason: CloseReason | null;
   flags: CriterionKey[];
-  askCount: number;
+  /** Criteria the agent has already asked a follow-up question about. */
+  askedAbout: CriterionKey[];
   bookingUid: string | null;
   bookingAt: Date | null;
   hubspotContactId: string | null;

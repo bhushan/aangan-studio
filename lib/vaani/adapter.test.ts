@@ -109,3 +109,24 @@ describe("tool requests without a call id", () => {
     expect(isAuthorized(new Headers(), "s3cret", new URL("https://x.test/api/vaani/webhook?secret=nope"))).toBe(false);
   });
 });
+
+describe("hardening against Vaani's tool templates", () => {
+  it("treats blank template fields as missing, so they never overwrite earlier answers", () => {
+    const r = parseQualifyRequest({ name: "", locality: "  ", completion: "March", size_sqft: 0 });
+    expect(r.answers).toEqual({ completion: "March" });
+  });
+
+  it("ignores an unfilled call id placeholder", () => {
+    expect(parseQualifyRequest({ call_id: "{room_name}", answers: {} }).vaaniCallId).toBeNull();
+    expect(parseQualifyRequest({ call_id: "{{call_id}}", answers: {} }).vaaniCallId).toBeNull();
+  });
+
+  it("ignores an invalid started_at instead of failing the call", () => {
+    expect(parseQualifyRequest({ call_id: "v_1", started_at: "yesterday-ish" }).startedAt).toBeNull();
+  });
+
+  it("reads a slot time without an offset as IST, not UTC", () => {
+    expect(parseBookRequest({ slot_start: "2026-10-12T11:00:00" }).slotStart).toBe("2026-10-12T05:30:00.000Z");
+    expect(parseBookRequest({ slot_start: "2026-10-12T05:30:00.000Z" }).slotStart).toBe("2026-10-12T05:30:00.000Z");
+  });
+});

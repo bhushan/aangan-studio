@@ -18,7 +18,7 @@ export function vaaniRoute(handler: (body: unknown, deps: Deps) => Promise<unkno
       return Response.json(await handler(body, getDeps()));
     } catch (err) {
       const message = (err as Error).message;
-      const status = /^Missing|invalid/i.test(message) ? 400 : 500;
+      const status = /^(Missing|invalid)\b/i.test(message) ? 400 : 500;
       console.error(`vaani route failed (${status})`, err);
       return Response.json({ error: status === 400 ? message : "internal error" }, { status });
     }

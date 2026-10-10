@@ -17,8 +17,14 @@ const obj = (v: unknown): Body => {
   }
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Body) : {};
 };
-const str = (...vs: unknown[]) => vs.find((v): v is string => typeof v === "string" && v.length > 0) ?? null;
-const date = (v: unknown) => (typeof v === "string" || typeof v === "number" ? new Date(v) : null);
+const str = (...vs: unknown[]) => vs.find((v): v is string => typeof v === "string" && v.trim().length > 0)?.trim() ?? null;
+const date = (v: unknown) => {
+  if (typeof v !== "string" && typeof v !== "number") return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+// A cURL template field Vaani did not fill in, e.g. "{room_name}" or "{{call_id}}".
+const unfilled = (v: string | null) => (v && /[{}]/.test(v) ? null : v);
 
 /** Shared secret via header, bearer token, or `?secret=` (the Vaani dashboard webhook takes only a URL). */
 export function isAuthorized(headers: Headers, secret: string | undefined, url?: URL): boolean {
@@ -36,7 +42,7 @@ export function isAuthorized(headers: Headers, secret: string | undefined, url?:
 function callMeta(raw: unknown) {
   const b = obj(raw);
   const call = obj(b.call);
-  const vaaniCallId = str(b.call_id, b.callId, b.room_name, call.id, call.call_id);
+  const vaaniCallId = unfilled(str(b.call_id, b.callId, b.room_name, call.id, call.call_id));
   return {
     b,
     vaaniCallId,
@@ -56,6 +62,8 @@ export function parseQualifyRequest(raw: unknown) {
   // Field by field, so one malformed value does not drop the rest of the caller's answers.
   const answers: Answers = {};
   for (const [key, value] of Object.entries(toolArgs(meta.b))) {
+    // Vaani's template sends "" for anything not collected yet; that must not erase earlier answers.
+    if (typeof value === "string" && (!value.trim() || unfilled(value) === null)) continue;
     const field = answersSchema.shape[key as keyof Answers];
     const parsed = field?.safeParse(value);
     if (parsed?.success && parsed.data != null) Object.assign(answers, { [key]: parsed.data });
@@ -72,8 +80,9 @@ export function parseBookRequest(raw: unknown) {
   const meta = callMeta(raw);
   const args = toolArgs(meta.b);
   const start = str(args.slot_start, meta.b.slot_start, args.start);
-  const d = start ? new Date(start) : null;
-  if (!d || Number.isNaN(d.getTime())) throw new Error("Missing or invalid slot_start");
+  // A time without an offset (the LLM may drop it) is studio time, not UTC.
+  const d = date(start && !/(Z|[+-]\d{2}:?\d{2})$/i.test(start) ? `${start}+05:30` : start);
+  if (!d) throw new Error("Missing or invalid slot_start");
   return { vaaniCallId: meta.vaaniCallId, slotStart: d.toISOString(), name: str(args.name, meta.b.name) };
 }
 

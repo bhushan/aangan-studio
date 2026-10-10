@@ -27,14 +27,14 @@ function toolCurls(appUrl: string): string {
       "qualify",
       "After collecting the caller's details, and again after they answer a follow-up question. Also immediately for a complaint from an existing client (put the complaint in notes). Follow the returned say and next_step.",
       "qualify",
-      '{"name":"","locality":"","property_type":"home|office|other","scope":"","size_sqft":0,"completion":"","decision_maker":"","budget_volunteered":"","notes":""}',
+      '{"call_id":"{room_name}","name":"","locality":"","property_type":"home|office|other","scope":"","size_sqft":0,"completion":"","decision_maker":"","budget_volunteered":"","notes":""}',
     ),
-    curl("slots", "When qualify returns next_step offer_slots. Offer the returned times.", "slots", "{}"),
+    curl("slots", "When qualify returns next_step offer_slots. Offer the returned times.", "slots", '{"call_id":"{room_name}"}'),
     curl(
       "book",
       "When the caller picks one of the offered times. slot_start is the exact start value of the chosen slot.",
       "book",
-      '{"slot_start":"","name":""}',
+      '{"call_id":"{room_name}","slot_start":"","name":""}',
     ),
   ].join("\n");
 }
@@ -73,6 +73,7 @@ Remaining dashboard steps (the API does not document custom tools or the account
    ${appUrl}/api/vaani/webhook?secret=<VAANI_TOOL_SECRET>
 
 2. Agent -> Persona -> Tools: add these three cURL tools, replacing <VAANI_TOOL_SECRET> with your value.
+   {room_name} asks Vaani to insert the call id; if it is not supported the app matches the open call instead.
 
 ${toolCurls(appUrl)}`);
 }
