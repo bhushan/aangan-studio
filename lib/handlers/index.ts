@@ -159,7 +159,12 @@ export async function handleBook(raw: unknown, deps: Deps): Promise<{ booked: bo
 type WebhookResult = { ok: boolean; errors: string[] };
 
 /** Vaani's account webhook. One URL receives every call lifecycle event. */
+const HANDLED_EVENTS = new Set(["call_started", "user_picked_up_at", "call_ended", "call_postprocessing"]);
+
 export async function handleWebhook(raw: unknown, deps: Deps): Promise<WebhookResult> {
+  // Connectivity tests and events we do not use are acknowledged before any validation.
+  const name = (raw as { event?: unknown } | null)?.event;
+  if (typeof name !== "string" || !HANDLED_EVENTS.has(name)) return { ok: true, errors: [] };
   const ev = parseVaaniEvent(raw);
   const meta = { vaaniCallId: ev.vaaniCallId, callerNumber: ev.callerNumber, startedAt: ev.at, answeredAt: null };
   switch (ev.event) {

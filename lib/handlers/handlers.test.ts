@@ -269,6 +269,13 @@ describe("handleWebhook", () => {
     expect(repo.all()[0].route).toBe("qualified");
   });
 
+  it("acknowledges a connectivity test or unknown event without a call id", async () => {
+    const { repo, deps } = setup();
+    expect(await handleWebhook({ event: "test" }, deps)).toEqual({ ok: true, errors: [] });
+    expect(await handleWebhook({ ping: true }, deps)).toEqual({ ok: true, errors: [] });
+    expect(repo.all()).toHaveLength(0);
+  });
+
   it("acknowledges events it does not use", async () => {
     const { deps } = setup();
     expect(await handleWebhook({ event: "call_ringing", room_name: "v_1" }, deps)).toEqual({ ok: true, errors: [] });
