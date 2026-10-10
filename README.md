@@ -29,6 +29,13 @@ Scope: incoming phone calls only. See "Extending to WhatsApp and the web form" b
    and transcript link, a deal at "Consultation booked" when booked, a task for complaints.
    `call_postprocessing` adds the transcript and updates the same HubSpot records.
 
+**Capture guardrails.** The voice agent's model sometimes misses or mishears details, so four layers protect the outcome:
+
+1. The agent reads area, scope and timing back to the caller before the first check.
+2. `/qualify` hands an empty form back (`next_step: resend_details`) instead of judging blanks, and logs the field names it received.
+3. Complaints and clear fails act at once; otherwise nobody is qualified until area, scope and completion are known. Each is asked for once (`requested`), so a missed answer cannot loop the call.
+4. When Vaani sends the transcript, Gemini re-reads the whole call (`lib/rubric/review.ts`): it fills details the agent never passed and re-checks the five criteria. If it contradicts the mid-call outcome, the call lands in "Needs a person" on the dashboard, HubSpot gets a review line, and designers get a Telegram. What the caller was told stays on record. `npm run review -- <id>` re-reviews a past call.
+
 **Pricing is never quoted.** Nikhil asked for per-sq-ft quotes on the call, but `pricing.md` says no
 number may be quoted, so the agent prompt only receives the never-say list and the deflection line.
 `lib/agent-prompt.test.ts` fails the build if a price figure ever reaches the prompt.

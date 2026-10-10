@@ -15,6 +15,8 @@ const COLUMNS = {
   closeReason: "close_reason",
   flags: "flags",
   askedAbout: "asked_about",
+  requested: "requested",
+  review: "review",
   bookingUid: "booking_uid",
   bookingAt: "booking_at",
   hubspotContactId: "hubspot_contact_id",
@@ -29,7 +31,7 @@ const COLUMNS = {
   aiLatencyMs: "ai_latency_ms",
 } as const satisfies Record<keyof CallPatch, string>;
 
-const JSON_COLUMNS = new Set(["answers", "assessment"]);
+const JSON_COLUMNS = new Set(["answers", "assessment", "review"]);
 
 type Row = Record<string, unknown>;
 const d = (v: unknown) => (v == null ? null : new Date(v as string));
@@ -50,6 +52,8 @@ export function toCall(r: Row): CallRecord {
     closeReason: (r.close_reason as CallRecord["closeReason"]) ?? null,
     flags: (r.flags as CallRecord["flags"]) ?? [],
     askedAbout: (r.asked_about as CallRecord["askedAbout"]) ?? [],
+    requested: (r.requested as CallRecord["requested"]) ?? [],
+    review: (r.review as CallRecord["review"]) ?? null,
     bookingUid: (r.booking_uid as string) ?? null,
     bookingAt: d(r.booking_at),
     hubspotContactId: (r.hubspot_contact_id as string) ?? null,

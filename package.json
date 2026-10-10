@@ -15,7 +15,8 @@
     "push-env": "tsx scripts/push-env.ts",
     "calls": "tsx scripts/calls.ts",
     "smoke": "tsx scripts/smoke.ts",
-    "tool": "tsx scripts/copy-tool.ts"
+    "tool": "tsx scripts/copy-tool.ts",
+    "review": "tsx scripts/review.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.93",

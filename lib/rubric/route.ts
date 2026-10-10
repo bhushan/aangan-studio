@@ -1,5 +1,5 @@
 import { CLOSE_REASONS, type CloseReason, type Route } from "../calls/types";
-import { CRITERIA, type Assessment, type CriterionKey } from "./schema";
+import { CRITERIA, type Answers, type Assessment, type CriterionKey } from "./schema";
 
 export type Decision = {
   route: Route;
@@ -28,4 +28,19 @@ export function decideRoute(a: Assessment, ctx: { askedAbout: CriterionKey[] }):
   }
   if (unclear.length) return { ...none, route: "qualified_flagged", flags: unclear };
   return none;
+}
+
+// The three details every enquiry needs before it is judged, in the order the agent collects them.
+const CORE: { field: "locality" | "scope" | "completion"; criterion: CriterionKey }[] = [
+  { field: "locality", criterion: "service_area" },
+  { field: "scope", criterion: "real_project" },
+  { field: "completion", criterion: "timeline" },
+];
+
+/**
+ * The next core detail to ask for, or null when the call can be judged. Each is asked for once:
+ * if the agent still does not pass it, the call is judged on what there is rather than looping.
+ */
+export function nextToCollect(answers: Answers, requested: CriterionKey[]): { field: string; criterion: CriterionKey } | null {
+  return CORE.find((c) => !answers[c.field] && !requested.includes(c.criterion)) ?? null;
 }

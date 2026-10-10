@@ -102,6 +102,12 @@ describe("inView", () => {
     expect(ids("closed")).toEqual(["closed"]);
   });
 
+  it("puts a call whose post-call review disagrees under 'Needs a person'", () => {
+    const review = { assessment: null!, route: "qualified" as const, closeReason: null, note: "Looks like a fit after all. Consider calling back.", filled: [], at: "" };
+    expect(inView(makeCall({ route: "close", closeReason: "timeline_unworkable", review }), "follow_up")).toBe(true);
+    expect(inView(makeCall({ route: "close", closeReason: "timeline_unworkable", review: { ...review, note: null } }), "follow_up")).toBe(false);
+  });
+
   it("parses unknown views as all", () => {
     expect(parseView("nope")).toBe("all");
     expect(parseView("booked")).toBe("booked");

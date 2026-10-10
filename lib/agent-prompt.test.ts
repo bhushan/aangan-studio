@@ -30,6 +30,12 @@ describe("buildAgentPrompt", () => {
     expect(prompt.indexOf("part of the decision")).toBeLessThan(prompt.indexOf(`Call ${TOOL_NAMES.qualify} with everything`));
   });
 
+  it("reads the key details back for the caller to confirm before the first check", () => {
+    expect(prompt).toMatch(/read back/i);
+    expect(prompt).toContain("is that right?");
+    expect(prompt.indexOf("is that right?")).toBeLessThan(prompt.indexOf(`Call ${TOOL_NAMES.qualify} with everything`));
+  });
+
   it("names the tools exactly as Vaani registered them", () => {
     for (const name of ["submit_property_qualification", "create_vaani_slot", "book_vaani_slot"]) expect(prompt).toContain(name);
   });

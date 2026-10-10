@@ -40,6 +40,7 @@ export function CallRow({ call: c }: { call: CallRecord }) {
           </div>
           <p className="mt-1 truncate text-sm text-stone-600">{projectLine(c)}</p>
           {d && <p className={`mt-0.5 text-sm ${d.className}`}>{d.text}</p>}
+          {c.review?.note && <p className="mt-0.5 text-sm text-amber-800">Review: {c.review.note}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2 text-sm text-stone-500 sm:flex-col sm:items-end sm:gap-0.5">
           <time dateTime={c.startedAt.toISOString()} className="tabular-nums">

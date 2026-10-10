@@ -1,12 +1,13 @@
 import type { CallsRepo } from "../calls/repo";
-import { isQualified, type CallRecord, type Route } from "../calls/types";
-import { buildHandoffNote } from "../handoff-note";
+import { isQualified, type CallRecord, type CallReview, type Route } from "../calls/types";
+import { buildHandoffNote, buildReviewNote } from "../handoff-note";
 import type { Calcom, Slot } from "../integrations/calcom";
 import type { Hubspot, HubspotIds } from "../integrations/hubspot";
 import type { Telegram } from "../integrations/telegram";
-import { ASK_FALLBACK, CLOSE_LINES, LINES } from "../rubric/lines";
-import { decideRoute, type Decision } from "../rubric/route";
-import type { Answers, Assessment } from "../rubric/schema";
+import { ASK_FALLBACK, CLOSE_LINES, COLLECT, LINES } from "../rubric/lines";
+import { decideRoute, nextToCollect, type Decision } from "../rubric/route";
+import { fillMissing, reviewNote, type ReviewResult } from "../rubric/review";
+import { CRITERIA, type Answers, type Assessment } from "../rubric/schema";
 import { formatSlot, isAfterHours } from "../time";
 import { randomUUID } from "node:crypto";
 import { parseBookRequest, parseQualifyRequest, parseSlotsRequest, parseVaaniEvent, type VaaniEvent } from "../vaani/adapter";
@@ -18,6 +19,8 @@ export type AssessResult = { assessment: Assessment; costUsd: number | null; lat
 export type Deps = {
   repo: CallsRepo;
   assess: (answers: Answers, ctx: { now: Date }) => Promise<AssessResult>;
+  /** Post-call re-read of the full transcript (lib/rubric/review.ts). */
+  review: (transcript: string, ctx: { now: Date }) => Promise<ReviewResult>;
   calcom: Calcom;
   telegram: Telegram;
   hubspot: Hubspot;
@@ -109,6 +112,22 @@ export async function handleQualify(raw: unknown, deps: Deps): Promise<QualifyRe
   const decision: Decision = result
     ? decideRoute(result.assessment, { askedAbout: call.askedAbout })
     : { route: "callback", flags: [], closeReason: null, askAbout: null };
+
+  // Complaints and clear fails act at once. Otherwise nobody is qualified, or asked a judgement
+  // question, until area, scope and completion are known; each is asked for once, so no loop.
+  const collect = result && (decision.route === "ask" || isQualified(decision.route)) ? nextToCollect(answers, call.requested) : null;
+  if (collect) {
+    await deps.repo.update(call.id, {
+      callerNumber: call.callerNumber ?? req.callerNumber,
+      answers,
+      assessment: result!.assessment,
+      route: "ask",
+      requested: [...call.requested, collect.criterion],
+      aiCostUsd: (call.aiCostUsd ?? 0) + (result!.costUsd ?? 0),
+      aiLatencyMs: result!.latencyMs,
+    });
+    return { route: "ask", say: COLLECT[collect.field as keyof typeof COLLECT], next_step: "ask", ask_about: collect.criterion };
+  }
 
   const updated = await deps.repo.update(call.id, {
     callerNumber: call.callerNumber ?? req.callerNumber,
@@ -215,15 +234,32 @@ async function finalize(ev: VaaniEvent, deps: Deps): Promise<WebhookResult> {
     ...(ev.transcript ? { transcript: ev.transcript } : {}),
   });
   // Atomic, so a qualify that lands as the caller hangs up is not overwritten.
-  const final = await deps.repo.markDroppedIfUnfinished(call.id);
+  let final = await deps.repo.markDroppedIfUnfinished(call.id);
 
   const errors: string[] = [];
+  const noteAlreadySent = final.telegramSentAt !== null;
+  if (final.transcript && !final.review) {
+    try {
+      final = await runReview(deps, final);
+    } catch (e) {
+      errors.push(`review: ${(e as Error).message}`);
+    }
+  }
+
   const needsNote =
     isQualified(final.route) || final.route === "escalate" || final.route === "callback" ||
     (final.route === "dropped" && final.callerNumber !== null);
   if (needsNote && !final.telegramSentAt) {
     try {
-      await sendNote(deps, final);
+      await sendNote(deps, final); // carries the review line when there is one
+    } catch (e) {
+      errors.push(`telegram: ${(e as Error).message}`);
+    }
+  }
+  // The team already has a note (or none was due): a contradicting review goes out on its own.
+  if (final.review?.note && final.review.at === deps.now().toISOString() && (noteAlreadySent || !needsNote)) {
+    try {
+      await deps.telegram.send(buildReviewNote(final, deps.dashboardUrl));
     } catch (e) {
       errors.push(`telegram: ${(e as Error).message}`);
     }
@@ -232,6 +268,23 @@ async function finalize(ev: VaaniEvent, deps: Deps): Promise<WebhookResult> {
   const hubspotError = await syncHubspot(deps, final.id);
   if (hubspotError) errors.push(`hubspot: ${hubspotError}`);
   return { ok: errors.length === 0, errors };
+}
+
+/** Re-reads the whole transcript: fills answers the agent never passed and records whether the outcome holds up. */
+export async function runReview(deps: Deps, call: CallRecord): Promise<CallRecord> {
+  const r = await deps.review(call.transcript!, { now: deps.now() });
+  const { answers, filled } = fillMissing(call.answers, r.answers);
+  // Every criterion counts as asked: after the call, unclear means unclear, not another question.
+  const d = decideRoute(r.assessment, { askedAbout: [...CRITERIA] });
+  const review: CallReview = {
+    assessment: r.assessment,
+    route: d.route,
+    closeReason: d.closeReason,
+    note: reviewNote(call.route, d),
+    filled,
+    at: deps.now().toISOString(),
+  };
+  return deps.repo.update(call.id, { answers, review, aiCostUsd: (call.aiCostUsd ?? 0) + (r.costUsd ?? 0) });
 }
 
 /**

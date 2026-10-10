@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideRoute } from "./route";
+import { decideRoute, nextToCollect } from "./route";
 import type { Assessment, CriterionKey, Verdict } from "./schema";
 
 function assess(
@@ -79,5 +79,22 @@ describe("decideRoute", () => {
   it("asks about 1-3 before flagging 4-5", () => {
     const d = decideRoute(assess({ service_area: "unclear", decision_maker: "unclear" }), { askedAbout: [] });
     expect(d).toMatchObject({ route: "ask", askAbout: "service_area" });
+  });
+});
+
+describe("nextToCollect", () => {
+  it("asks for area, then scope, then completion, before any judging", () => {
+    expect(nextToCollect({ name: "Puja" }, [])).toEqual({ field: "locality", criterion: "service_area" });
+    expect(nextToCollect({ locality: "Baner" }, [])).toEqual({ field: "scope", criterion: "real_project" });
+    expect(nextToCollect({ locality: "Baner", scope: "kitchen" }, [])).toEqual({ field: "completion", criterion: "timeline" });
+  });
+
+  it("asks for each detail only once, so a missed answer cannot loop the call", () => {
+    expect(nextToCollect({ locality: "Baner" }, ["real_project"])).toEqual({ field: "completion", criterion: "timeline" });
+    expect(nextToCollect({}, ["service_area", "real_project", "timeline"])).toBeNull();
+  });
+
+  it("has nothing to collect once the three are known", () => {
+    expect(nextToCollect({ locality: "Baner", scope: "kitchen", completion: "March" }, [])).toBeNull();
   });
 });

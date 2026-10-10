@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleBook, handleQualify, handleSlots, handleWebhook, type Deps } from "./index";
 import { createMemoryRepo } from "../calls/memory-repo";
 import { makeCall } from "../calls/fixtures";
-import type { Assessment, CriterionKey, Verdict } from "../rubric/schema";
+import type { Answers, Assessment, CriterionKey, Verdict } from "../rubric/schema";
 import type { CallRecord } from "../calls/types";
 
 function assessment(v: Partial<Record<CriterionKey, Verdict>> = {}, extra: Partial<Assessment> = {}): Assessment {
@@ -21,7 +21,7 @@ function assessment(v: Partial<Record<CriterionKey, Verdict>> = {}, extra: Parti
   };
 }
 
-function setup(opts: { seed?: CallRecord[]; result?: Assessment | Error } = {}) {
+function setup(opts: { seed?: CallRecord[]; result?: Assessment | Error; review?: { answers: Answers; assessment: Assessment } | Error } = {}) {
   const repo = createMemoryRepo(opts.seed);
   const pending: Promise<unknown>[] = [];
   const deps: Deps = {
@@ -29,6 +29,10 @@ function setup(opts: { seed?: CallRecord[]; result?: Assessment | Error } = {}) 
     assess: vi.fn(async () => {
       if (opts.result instanceof Error) throw opts.result;
       return { assessment: opts.result ?? assessment(), costUsd: 0.0004, latencyMs: 900 };
+    }),
+    review: vi.fn(async () => {
+      if (opts.review instanceof Error) throw opts.review;
+      return { ...(opts.review ?? { answers: {}, assessment: assessment() }), costUsd: 0.001 };
     }),
     calcom: {
       slots: vi.fn(async () => [
@@ -55,7 +59,11 @@ function setup(opts: { seed?: CallRecord[]; result?: Assessment | Error } = {}) 
   return { repo, deps, flush };
 }
 
-const qualifyBody = { call_id: "v_1", caller_number: "+910000000001", answers: { name: "Priya", locality: "Kothrud" } };
+const qualifyBody = {
+  call_id: "v_1",
+  caller_number: "+910000000001",
+  answers: { name: "Priya", locality: "Kothrud", scope: "Full 3BHK redesign with execution", completion: "March 2027" },
+};
 
 describe("handleQualify", () => {
   it("creates the call row, stores the assessment and tells the agent to offer slots", async () => {
@@ -94,6 +102,34 @@ describe("handleQualify", () => {
     const res = await handleQualify({ call_id: "v_1" }, deps);
     expect(res.next_step).toBe("offer_slots");
     expect(deps.assess).toHaveBeenCalledTimes(2);
+  });
+
+  it("collects area, scope and completion before qualifying anyone", async () => {
+    const { repo, deps } = setup();
+    const res = await handleQualify({ call_id: "v_1", answers: { name: "Puja", locality: "Baner" } }, deps);
+    expect(res).toMatchObject({ route: "ask", next_step: "ask", ask_about: "real_project" });
+    expect(res.say).toMatch(/what would you like/i);
+    expect(repo.all()[0]).toMatchObject({ route: "ask", requested: ["real_project"], askedAbout: [] });
+  });
+
+  it("closes at once on a clear fail, even with details still missing", async () => {
+    const { deps } = setup({ result: assessment({ service_area: "fail" }) });
+    const res = await handleQualify({ call_id: "v_1", answers: { name: "Puja", locality: "Nashik" } }, deps);
+    expect(res).toMatchObject({ route: "close", next_step: "end_call" });
+  });
+
+  it("never holds back a complaint to collect project details", async () => {
+    const { deps } = setup({ result: assessment({}, { is_complaint: true }) });
+    const res = await handleQualify({ call_id: "v_1", answers: { name: "Ravi", locality: "Baner", notes: "Existing client, designer not replying" } }, deps);
+    expect(res.route).toBe("escalate");
+  });
+
+  it("judges on what it has once a requested detail still did not arrive", async () => {
+    const { repo, deps } = setup();
+    await handleQualify({ call_id: "v_1", answers: { name: "Puja", locality: "Baner" } }, deps);
+    const res = await handleQualify({ call_id: "v_1", answers: { completion: "March" } }, deps);
+    expect(res.route).toBe("qualified");
+    expect(repo.all()[0].requested).toEqual(["real_project"]);
   });
 
   it("closes gracefully without forwarding", async () => {
@@ -226,6 +262,39 @@ describe("handleWebhook", () => {
     expect(deps.telegram.send).toHaveBeenCalledTimes(1);
   });
 
+  it("reviews the transcript once, fills details the agent missed, and flags a wrong outcome", async () => {
+    const { repo, deps } = setup({
+      seed: [makeCall({ vaaniCallId: "v_1", route: "callback", answers: { name: "Puja" } })],
+      review: { answers: { name: "Pooja", locality: "Nashik", completion: "in fifteen days" }, assessment: assessment({ service_area: "fail" }) },
+    });
+    await handleWebhook(ended, deps);
+    await handleWebhook(post, deps);
+    await handleWebhook(post, deps);
+    expect(deps.review).toHaveBeenCalledTimes(1);
+    const row = repo.all()[0];
+    expect(row.route).toBe("callback"); // what the caller was told stays on record
+    expect(row.answers).toMatchObject({ name: "Puja", locality: "Nashik", completion: "in fifteen days" });
+    expect(row.review).toMatchObject({ route: "close", closeReason: "outside_service_area", filled: ["locality", "completion"] });
+    expect(row.review!.note).toMatch(/likely not a fit/i);
+    expect(deps.telegram.send).toHaveBeenLastCalledWith(expect.stringMatching(/^Review of Puja's call[\s\S]*likely not a fit/i));
+    expect(deps.hubspot.syncCall).toHaveBeenLastCalledWith(expect.objectContaining({ review: expect.objectContaining({ route: "close" }) }), expect.any(Function));
+  });
+
+  it("sends no extra note when the review agrees", async () => {
+    const { deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })] });
+    await handleWebhook(ended, deps);
+    await handleWebhook(post, deps);
+    expect(deps.review).toHaveBeenCalledTimes(1);
+    expect(deps.telegram.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("still finishes the call when the review fails, and reports it", async () => {
+    const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "qualified" })], review: new Error("gemini down") });
+    const res = await handleWebhook(post, deps);
+    expect(res.errors).toEqual([expect.stringContaining("review: gemini down")]);
+    expect(repo.all()[0].hubspotCallId).toBe("hc_1");
+  });
+
   it("marks a call that ended before a decision as dropped and asks for a call back", async () => {
     const { repo, deps } = setup({ seed: [makeCall({ vaaniCallId: "v_1", route: "ask" })] });
     await handleWebhook(ended, deps);
@@ -318,7 +387,7 @@ describe("tools without a call id", () => {
         makeCall({ id: "live", vaaniCallId: "v_live", startedAt: new Date("2026-10-01T16:58:00Z"), answers: {} }),
       ],
     });
-    await handleQualify({ name: "Priya", locality: "Kothrud" }, deps);
+    await handleQualify({ name: "Priya", locality: "Kothrud", scope: "Kitchen redesign with execution", completion: "March" }, deps);
     const live = repo.all().find((c) => c.id === "live")!;
     expect(live).toMatchObject({ route: "qualified", answers: { name: "Priya", locality: "Kothrud" } });
     expect(repo.all()).toHaveLength(2);

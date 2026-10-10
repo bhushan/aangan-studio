@@ -35,6 +35,7 @@ function callBody(c: CallRecord, dashboardUrl: string): string {
   const lines = [`Route: ${c.route ?? "unknown"}${c.closeReason ? ` (${c.closeReason})` : ""}`];
   if (c.afterHours) lines.push("After hours");
   if (c.flags.length) lines.push(`Flags: ${c.flags.join(", ")}`);
+  if (c.review?.note) lines.push(`Post-call review: ${c.review.note}`);
   if (c.bookingAt) lines.push(`Consultation: ${formatSlot(c.bookingAt)}`);
   if (c.assessment) {
     lines.push("", "Criteria:");

@@ -12,6 +12,18 @@ export const CLOSE_REASONS = {
 } as const satisfies Record<CriterionKey, string>;
 export type CloseReason = (typeof CLOSE_REASONS)[CriterionKey];
 
+/** Post-call re-read of the full transcript. Never changes `route`, which is what the caller was told. */
+export type CallReview = {
+  assessment: Assessment;
+  route: Route;
+  closeReason: CloseReason | null;
+  /** Set only when the review contradicts the mid-call outcome. */
+  note: string | null;
+  /** Answer fields the transcript filled because the agent never passed them. */
+  filled: string[];
+  at: string;
+};
+
 export type CallRecord = {
   id: string;
   vaaniCallId: string;
@@ -27,6 +39,9 @@ export type CallRecord = {
   flags: CriterionKey[];
   /** Criteria the agent has already asked a follow-up question about. */
   askedAbout: CriterionKey[];
+  /** Core details the server asked the agent to collect before judging (each once). */
+  requested: CriterionKey[];
+  review: CallReview | null;
   bookingUid: string | null;
   bookingAt: Date | null;
   hubspotContactId: string | null;

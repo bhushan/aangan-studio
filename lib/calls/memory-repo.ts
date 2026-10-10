@@ -24,6 +24,8 @@ export function createMemoryRepo(seed: CallRecord[] = []): CallsRepo & { all: ()
         closeReason: null,
         flags: [],
         askedAbout: [],
+        requested: [],
+        review: null,
         bookingUid: null,
         bookingAt: null,
         hubspotContactId: null,

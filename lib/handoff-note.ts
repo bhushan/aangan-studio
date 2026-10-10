@@ -37,6 +37,7 @@ export function buildHandoffNote(
   if (a.budget_volunteered) lines.push(`Budget (volunteered): ${a.budget_volunteered}`);
   if (a.notes) lines.push(`Notes: ${a.notes}`);
   if (c.bookingAt) lines.push(`Consultation: ${formatSlot(c.bookingAt)}`);
+  if (c.review?.note) lines.push(`Review: ${c.review.note}`);
   for (const f of c.flags) lines.push(`Flag: ${FLAG_LABEL[f]} unclear`);
   if (opts.priorCalls.length) {
     const n = opts.priorCalls.length;
@@ -44,5 +45,14 @@ export function buildHandoffNote(
   }
   lines.push(`Call: ${formatSlot(c.startedAt)}${c.afterHours ? " (after hours)" : ""}`);
   lines.push(`Transcript: ${opts.dashboardUrl}/calls/${c.id}`);
+  return lines.join("\n");
+}
+
+/** Sent on its own when the post-call review contradicts an outcome the team was already told about. */
+export function buildReviewNote(c: CallRecord, dashboardUrl: string): string {
+  const who = c.answers.name ?? c.callerNumber ?? "Unknown caller";
+  const lines = [`Review of ${who}'s call (${formatSlot(c.startedAt)}): ${c.review!.note}`];
+  if (c.review!.filled.length) lines.push(`Filled in from the transcript: ${c.review!.filled.join(", ")}`);
+  lines.push(`Number: ${c.callerNumber ?? "not captured"}`, `Transcript: ${dashboardUrl}/calls/${c.id}`);
   return lines.join("\n");
 }

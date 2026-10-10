@@ -9,6 +9,13 @@ export const ASK_FALLBACK: Partial<Record<CriterionKey, string>> = {
   timeline: "When would you need the project complete?",
 };
 
+/** Asked when a core detail is missing before the call is judged (lib/rubric/route.ts nextToCollect). */
+export const COLLECT: Record<"locality" | "scope" | "completion", string> = {
+  locality: "Which area of Pune or PCMC is the site in?",
+  scope: "What would you like us to do, which rooms, and are you looking for design and execution together?",
+  completion: "When would you need the project complete?",
+};
+
 export const CLOSE_LINES: Record<CloseReason, string> = {
   not_a_real_project:
     "We're a full-service studio, so our projects include both design and execution, at least a full room. This may not be the right fit right now, but do call us back if you plan a full redesign.",

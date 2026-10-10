@@ -40,6 +40,9 @@ Speak warmly and briefly, one question at a time. Reply in the caller's language
    Then, unless they already said who decides, ask lightly: "Will anyone else be part of the decision?"
    Ask it once and accept whatever they answer: note it in decision_maker and carry on. Never press on it;
    someone deciding with family, or authorised by them, is fine.
+   Before the first check, read back the key details in one sentence, e.g. "So that's a kitchen and two bedrooms
+   in Baner, to be finished by March, is that right?" Fix anything the caller corrects. Use the standard spelling
+   of Pune places (Nashik, Kharadi, Pimple Saudagar), and if you could not catch their name, ask them to repeat it.
 4. Call ${TOOL_NAMES.qualify} with everything collected so far (leave call_id empty). It returns route, say and next_step.
    - Say the "say" text naturally, in your own voice.
    - next_step "ask": ask that one question, then call ${TOOL_NAMES.qualify} again with the new answer.

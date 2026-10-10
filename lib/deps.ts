@@ -8,6 +8,7 @@ import { createHubspot } from "./integrations/hubspot";
 import { createTelegram } from "./integrations/telegram";
 import { disabledCalcom, disabledHubspot, disabledTelegram } from "./integrations/disabled";
 import { createAssess } from "./rubric/qualify";
+import { createReview } from "./rubric/review";
 
 let cached: Deps | null = null;
 
@@ -18,10 +19,13 @@ export function getDeps(): Deps {
   if (cached) return cached;
   env("GOOGLE_GENERATIVE_AI_API_KEY"); // read by @ai-sdk/google; checked here so a missing key fails loudly
   const dashboardUrl = env("APP_URL").replace(/\/$/, "");
-  const assess = createAssess({ files: loadStudioFiles(), model: optionalEnv("QUALIFY_MODEL") });
+  const files = loadStudioFiles();
+  const assess = createAssess({ files, model: optionalEnv("QUALIFY_MODEL") });
+  const review = createReview({ files, model: optionalEnv("QUALIFY_MODEL") });
   cached = {
     repo: createNeonRepo(env("DATABASE_URL")),
     assess: (answers, ctx) => assess(answers, ctx),
+    review: (transcript, ctx) => review(transcript, ctx),
     // Each integration switches on once all its keys are set; until then a stand-in records the gap.
     calcom: allSet("CALCOM_API_KEY", "CALCOM_EVENT_TYPE_ID", "CALCOM_ATTENDEE_EMAIL")
       ? createCalcom({

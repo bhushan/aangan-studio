@@ -62,6 +62,11 @@ async function CallDetail({ params }: { params: PageProps<"/calls/[id]">["params
         )}
       </header>
 
+      {c.review?.note && (
+        <Callout tone="warn" title="Post-call review disagrees">
+          {c.review.note} Gemini re-read the full transcript after the call; what the caller was told is unchanged.
+        </Callout>
+      )}
       {c.bookingAt && (
         <Callout tone="good" title={`Consultation booked for ${formatSlot(c.bookingAt)}`}>
           {c.flags.length > 0 && `Before the meeting, confirm: ${c.flags.map((f) => CRITERION[f].toLowerCase()).join(", ")}.`}
@@ -162,22 +167,26 @@ function Callout({ tone, title, children }: { tone: keyof typeof CALLOUT; title:
 
 function Answers({ call: c }: { call: CallRecord }) {
   const a = c.answers;
-  const rows: [string, string | null | undefined][] = [
-    ["Name", a.name],
-    ["Area", a.locality],
-    ["Property", a.property_type && `${a.property_type[0].toUpperCase()}${a.property_type.slice(1)}${a.size_sqft ? `, ${a.size_sqft.toLocaleString("en-IN")} sq ft` : ""}`],
-    ["Scope", a.scope],
-    ["Wants it done by", a.completion],
-    ["Decides", a.decision_maker],
-    ["Budget (volunteered)", a.budget_volunteered],
-    ["Notes", a.notes],
+  const rows: [string, string | null | undefined, string][] = [
+    ["Name", a.name, "name"],
+    ["Area", a.locality, "locality"],
+    ["Property", a.property_type && `${a.property_type[0].toUpperCase()}${a.property_type.slice(1)}${a.size_sqft ? `, ${a.size_sqft.toLocaleString("en-IN")} sq ft` : ""}`, "property_type"],
+    ["Scope", a.scope, "scope"],
+    ["Wants it done by", a.completion, "completion"],
+    ["Decides", a.decision_maker, "decision_maker"],
+    ["Budget (volunteered)", a.budget_volunteered, "budget_volunteered"],
+    ["Notes", a.notes, "notes"],
   ];
+  const filled = new Set(c.review?.filled ?? []);
   return (
     <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]">
-      {rows.map(([k, v]) => (
+      {rows.map(([k, v, field]) => (
         <div key={k} className="contents">
           <dt className="text-stone-500">{k}</dt>
-          <dd className={v ? "text-stone-900" : "text-stone-400"}>{v || "Not given"}</dd>
+          <dd className={v ? "text-stone-900" : "text-stone-400"}>
+            {v || "Not given"}
+            {v && filled.has(field) && <span className="ml-2 text-xs text-stone-500">from transcript</span>}
+          </dd>
         </div>
       ))}
     </dl>

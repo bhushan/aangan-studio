@@ -73,11 +73,14 @@ export function computeMetrics(calls: CallRecord[], rates: Rates): Metrics {
 
 const FOLLOW_UP_ORDER: Partial<Record<Route, number>> = { escalate: 0, callback: 1, dropped: 2, qualified: 3, qualified_flagged: 3 };
 
+// A review that contradicts the call ranks just after complaints.
+const order = (c: CallRecord) => (c.route === "escalate" ? 0 : c.review?.note ? 0.5 : (FOLLOW_UP_ORDER[c.route!] ?? 4));
+
 /** Calls a person should pick up: complaints, callbacks, dropped calls, and qualified callers who did not book. */
 export function followUps(calls: CallRecord[]): CallRecord[] {
   return calls
     .filter((c) => inView(c, "follow_up"))
-    .sort((a, b) => FOLLOW_UP_ORDER[a.route!]! - FOLLOW_UP_ORDER[b.route!]! || b.startedAt.getTime() - a.startedAt.getTime());
+    .sort((a, b) => order(a) - order(b) || b.startedAt.getTime() - a.startedAt.getTime());
 }
 
 export const RANGES = { "7d": "Last 7 days", "30d": "Last 30 days", all: "All time" } as const;
@@ -107,7 +110,10 @@ export function inView(c: CallRecord, view: ViewKey): boolean {
     case "booked":
       return c.bookingUid !== null;
     case "follow_up":
-      return c.route !== null && FOLLOW_UP_ORDER[c.route] !== undefined && !(isQualified(c.route) && c.bookingUid);
+      return (
+        !!c.review?.note ||
+        (c.route !== null && FOLLOW_UP_ORDER[c.route] !== undefined && !(isQualified(c.route) && c.bookingUid))
+      );
     case "closed":
       return c.route === "close";
   }

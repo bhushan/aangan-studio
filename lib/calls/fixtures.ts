@@ -26,6 +26,8 @@ export function makeCall(overrides: Partial<CallRecord> = {}): CallRecord {
     closeReason: null,
     flags: [],
     askedAbout: [],
+    requested: [],
+    review: null,
     bookingUid: null,
     bookingAt: null,
     hubspotContactId: null,
