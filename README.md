@@ -10,7 +10,7 @@ Scope: incoming phone calls only. See "Extending to WhatsApp and the web form" b
 ## How a call flows
 
 1. Caller dials. Vaani picks up and collects name, locality, home/office, scope, size, completion date, decider.
-2. Vaani calls `POST /api/vaani/qualify`. Gemini 3.8 Flash (called with the studio's Gemini API key) judges each criterion `pass | fail | unclear`
+2. Vaani calls `POST /api/vaani/qualify`. Gemini 3.5 Flash-Lite (called with the studio's Gemini API key) judges each criterion `pass | fail | unclear`
    with evidence; `lib/rubric/route.ts` (plain code, not the model) decides the route:
 
    | Result | Route | Agent does |

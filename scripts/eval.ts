@@ -4,7 +4,7 @@ import "./load-env";
 import fs from "node:fs";
 import { loadStudioFiles } from "../lib/agent-prompt";
 import { env } from "../lib/env";
-import { createAssess } from "../lib/rubric/qualify";
+import { createAssess, DEFAULT_QUALIFY_MODEL } from "../lib/rubric/qualify";
 import { decideRoute, type Decision } from "../lib/rubric/route";
 import type { Route } from "../lib/calls/types";
 
@@ -71,7 +71,7 @@ async function main() {
 
   const report = `# Qualify eval
 
-Model: ${process.env.QUALIFY_MODEL || "gemini-3.8-flash"} · ${new Date().toISOString()}
+Model: ${process.env.QUALIFY_MODEL || DEFAULT_QUALIFY_MODEL} · ${new Date().toISOString()}
 
 - Route accuracy: **${passed}/${results.length}**
 - False "qualified" on enquiries that should close: **${falseQualified.length}** ${falseQualified.map((x) => x.e.id).join(", ")}

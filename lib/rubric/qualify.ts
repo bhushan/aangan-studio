@@ -6,15 +6,22 @@ import { istDate } from "../time";
 import { assessmentSchema, type Answers } from "./schema";
 
 // Called directly with the studio's Gemini API key (GOOGLE_GENERATIVE_AI_API_KEY).
-export const DEFAULT_QUALIFY_MODEL = "gemini-3.8-flash";
+// Flash-Lite: same 39/39 eval score as Flash at under half the latency (Vaani allows a tool 2-3 s).
+export const DEFAULT_QUALIFY_MODEL = "gemini-3.5-flash-lite";
 
-// Gemini 3.8 Flash list price, USD per million tokens (introductory rate through Dec 2026;
-// $1.50 / $7.50 from Jan 2027). Output includes reasoning tokens.
-const PRICE_PER_M = { input: 0.75, output: 3.75 };
+// List prices, USD per million tokens (checked Oct 2026). Output includes reasoning tokens.
+const PRICE_PER_M: Record<string, { input: number; output: number }> = {
+  "gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },
+  "gemini-3.8-flash": { input: 0.75, output: 3.75 }, // introductory through Dec 2026
+};
 
-export function tokenCostUsd(usage: { inputTokens: number | undefined; outputTokens: number | undefined }): number | null {
-  if (usage.inputTokens === undefined && usage.outputTokens === undefined) return null;
-  return ((usage.inputTokens ?? 0) * PRICE_PER_M.input + (usage.outputTokens ?? 0) * PRICE_PER_M.output) / 1_000_000;
+export function tokenCostUsd(
+  model: string,
+  usage: { inputTokens: number | undefined; outputTokens: number | undefined },
+): number | null {
+  const price = PRICE_PER_M[model];
+  if (!price || (usage.inputTokens === undefined && usage.outputTokens === undefined)) return null;
+  return ((usage.inputTokens ?? 0) * price.input + (usage.outputTokens ?? 0) * price.output) / 1_000_000;
 }
 
 export function buildRubricPrompt(files: Pick<StudioFiles, "services" | "qualified">, today: string): string {
@@ -42,8 +49,9 @@ export function createAssess(cfg: { files: StudioFiles; model?: string; timeoutM
     const parts = [`Answers collected so far (JSON):\n${JSON.stringify(answers, null, 2)}`];
     if (ctx.transcript) parts.push(`Conversation:\n${ctx.transcript}`);
 
+    const model = cfg.model ?? DEFAULT_QUALIFY_MODEL;
     const result = await generateText({
-      model: google(cfg.model ?? DEFAULT_QUALIFY_MODEL),
+      model: google(model),
       system: buildRubricPrompt(cfg.files, istDate(ctx.now)),
       prompt: parts.join("\n\n"),
       output: Output.object({ schema: assessmentSchema }),
@@ -51,12 +59,10 @@ export function createAssess(cfg: { files: StudioFiles; model?: string; timeoutM
       maxRetries: 0,
       // Vaani expects a tool reply within 2-3 s; leave room for the database writes.
       timeout: cfg.timeoutMs ?? 2000,
-      // Minimal thinking keeps a mid-call check fast; the rubric is a classification, not a puzzle.
-      providerOptions: { google: { thinkingConfig: { thinkingLevel: "minimal" } } },
     });
     return {
       assessment: result.output,
-      costUsd: tokenCostUsd(result.usage),
+      costUsd: tokenCostUsd(model, result.usage),
       latencyMs: Date.now() - started,
     };
   };
