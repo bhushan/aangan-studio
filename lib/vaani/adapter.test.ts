@@ -32,6 +32,11 @@ describe("parseQualifyRequest", () => {
     });
   });
 
+  it("reads tool arguments sent as a JSON string (OpenAI-style function calls)", () => {
+    const r = parseQualifyRequest({ arguments: JSON.stringify({ name: "Puja", locality: "Nashik", completion: "in fifteen days" }) });
+    expect(r.answers).toEqual({ name: "Puja", locality: "Nashik", completion: "in fifteen days" });
+  });
+
   it("reads a nested call object with tool arguments", () => {
     const r = parseQualifyRequest({
       call: { id: "v_2", from: "+910000000002" },

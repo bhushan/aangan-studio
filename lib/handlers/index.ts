@@ -28,7 +28,7 @@ export type Deps = {
   sleep: (ms: number) => Promise<void>;
 };
 
-type NextStep = "ask" | "offer_slots" | "end_call";
+type NextStep = "ask" | "offer_slots" | "end_call" | "resend_details";
 export type QualifyResponse = { route: Route; say: string; next_step: NextStep; ask_about: string | null };
 
 // A tool request without a call id belongs to the call in progress (Vaani's call_started creates it).
@@ -90,6 +90,14 @@ export async function handleQualify(raw: unknown, deps: Deps): Promise<QualifyRe
   const req = parseQualifyRequest(raw);
   const call = await findOrCreate(deps, req, "tool");
   const answers: Answers = { ...call.answers, ...req.answers };
+  // Field names only, never values: shows what the voice agent actually passed.
+  console.info(`qualify ${call.vaaniCallId}: received [${Object.keys(req.answers).join(", ")}]`);
+
+  // An empty form would be judged "unclear" on everything and burn the follow-up questions.
+  // Hand it back; the agent reads the reply and calls again with what the caller said.
+  if (!Object.values(answers).some((v) => v != null && v !== "")) {
+    return { route: call.route ?? "ask", say: "", next_step: "resend_details", ask_about: null };
+  }
 
   let result: AssessResult | null = null;
   try {

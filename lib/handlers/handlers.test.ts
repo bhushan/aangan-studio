@@ -79,6 +79,23 @@ describe("handleQualify", () => {
     expect(row.aiCostUsd).toBeCloseTo(0.0008);
   });
 
+  it("sends an empty form back to the agent instead of judging it", async () => {
+    const { repo, deps } = setup({ result: assessment({ service_area: "unclear" }) });
+    const res = await handleQualify({ call_id: "v_1", name: "", locality: "" }, deps);
+    expect(res).toMatchObject({ next_step: "resend_details", say: "" });
+    expect(deps.assess).not.toHaveBeenCalled();
+    const [row] = repo.all();
+    expect(row).toMatchObject({ route: null, askedAbout: [] });
+  });
+
+  it("judges details collected earlier in the call even when this request adds none", async () => {
+    const { deps } = setup();
+    await handleQualify(qualifyBody, deps);
+    const res = await handleQualify({ call_id: "v_1" }, deps);
+    expect(res.next_step).toBe("offer_slots");
+    expect(deps.assess).toHaveBeenCalledTimes(2);
+  });
+
   it("closes gracefully without forwarding", async () => {
     const { deps, flush } = setup({ result: assessment({ service_area: "fail" }) });
     const res = await handleQualify(qualifyBody, deps);

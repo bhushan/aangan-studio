@@ -15,7 +15,7 @@ const CALL_ID = str("Leave empty. The server identifies the call.");
 const SPEC: Record<string, { description: string; properties: Record<string, unknown>; required: string[] }> = {
   [TOOL_NAMES.qualify]: {
     description:
-      "Check an interior design enquiry against Aangan Studio's criteria. Call it once you have the caller's details (fill only what they said), again after they answer a follow-up question, and immediately for a complaint from an existing client (describe it in notes). Returns route, say (what to tell the caller) and next_step (ask, offer_slots or end_call).",
+      "Check an interior design enquiry against Aangan Studio's criteria. Pass every detail the caller has given so far, each in its own field; never call it with the fields empty. Call it once you have the caller's details, again after they answer a follow-up question, and immediately for a complaint from an existing client (describe it in notes). Returns route, say (what to tell the caller) and next_step (ask, offer_slots, end_call, or resend_details: call again with the fields filled).",
     properties: {
       call_id: CALL_ID,
       name: str("Caller's name."),

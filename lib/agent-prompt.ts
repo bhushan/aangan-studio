@@ -46,6 +46,8 @@ Speak warmly and briefly, one question at a time. Reply in the caller's language
    - next_step "offer_slots": call ${TOOL_NAMES.slots}, offer the times. When the caller picks one, say
      "One moment while I book that for you", then call ${TOOL_NAMES.book} with that slot's exact slot_start.
    - next_step "end_call": close politely and end the call.
+   - next_step "resend_details": say nothing; call ${TOOL_NAMES.qualify} again straight away with every detail the caller has given, each in its own field.
+   Always fill the fields with what the caller said (name, locality, scope, completion and so on). Never call it with the fields empty.
 5. Before ending, confirm their phone number if they gave a different one.
 
 ## Things only a human does (never do these)
