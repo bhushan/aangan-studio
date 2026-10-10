@@ -1,8 +1,9 @@
 // Runs the live 5-criteria check over the 40 September enquiries and scores routes against labels.json.
-// Needs AI_GATEWAY_API_KEY. Usage: npm run eval   (writes eval/last-run.md)
+// Needs GOOGLE_GENERATIVE_AI_API_KEY. Usage: npm run eval   (writes eval/last-run.md)
 import "./load-env";
 import fs from "node:fs";
 import { loadStudioFiles } from "../lib/agent-prompt";
+import { env } from "../lib/env";
 import { createAssess } from "../lib/rubric/qualify";
 import { decideRoute, type Decision } from "../lib/rubric/route";
 import type { Route } from "../lib/calls/types";
@@ -37,6 +38,7 @@ async function pool<T, R>(items: T[], size: number, fn: (t: T) => Promise<R>): P
 }
 
 async function main() {
+  env("GOOGLE_GENERATIVE_AI_API_KEY"); // fail fast with a clear message
   // Eval allows a longer timeout than live calls so slow responses are measured, not dropped.
   const assess = createAssess({ files: loadStudioFiles(), model: process.env.QUALIFY_MODEL || undefined, timeoutMs: 15000 });
   const cases = enquiries.filter((e) => !labels[e.id]?.skip);
@@ -69,7 +71,7 @@ async function main() {
 
   const report = `# Qualify eval
 
-Model: ${process.env.QUALIFY_MODEL || "google/gemini-3.8-flash"} · ${new Date().toISOString()}
+Model: ${process.env.QUALIFY_MODEL || "gemini-3.8-flash"} · ${new Date().toISOString()}
 
 - Route accuracy: **${passed}/${results.length}**
 - False "qualified" on enquiries that should close: **${falseQualified.length}** ${falseQualified.map((x) => x.e.id).join(", ")}

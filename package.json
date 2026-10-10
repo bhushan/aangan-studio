@@ -15,6 +15,7 @@
     "push-env": "tsx scripts/push-env.ts"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.93",
     "@neondatabase/serverless": "^1.2.0",
     "ai": "^7.0.137",
     "next": "16.4.0",

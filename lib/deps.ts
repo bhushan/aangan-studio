@@ -13,6 +13,7 @@ let cached: Deps | null = null;
 /** Production wiring for the /api/vaani/* handlers. */
 export function getDeps(): Deps {
   if (cached) return cached;
+  env("GOOGLE_GENERATIVE_AI_API_KEY"); // read by @ai-sdk/google; checked here so a missing key fails loudly
   const dashboardUrl = env("APP_URL").replace(/\/$/, "");
   const assess = createAssess({ files: loadStudioFiles(), model: optionalEnv("QUALIFY_MODEL") });
   cached = {

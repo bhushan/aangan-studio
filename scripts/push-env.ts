@@ -6,8 +6,8 @@ import { parseEnv } from "node:util";
 
 const wanted = Object.keys(parseEnv(fs.readFileSync(".env.example", "utf8")));
 const local = parseEnv(fs.readFileSync(".env", "utf8"));
-// DATABASE_URL comes from the Neon integration; the AI Gateway uses Vercel OIDC when deployed.
-const managedByVercel = new Set(["DATABASE_URL", "AI_GATEWAY_API_KEY"]);
+// DATABASE_URL comes from the Neon integration.
+const managedByVercel = new Set(["DATABASE_URL"]);
 
 for (const key of wanted) {
   const value = local[key];
