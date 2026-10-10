@@ -23,6 +23,11 @@ const date = (v: unknown) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
+// Phone numbers only: browser test calls report "web-user". Spaces and dashes are stripped.
+const phone = (v: string | null) => {
+  const digits = v?.replace(/[\s()-]/g, "") ?? "";
+  return /^\+?\d{7,15}$/.test(digits) ? digits : null;
+};
 // A cURL template field Vaani did not fill in, e.g. "{room_name}" or "{{call_id}}".
 const unfilled = (v: string | null) => (v && /[{}]/.test(v) ? null : v);
 
@@ -53,7 +58,7 @@ function callMeta(raw: unknown) {
   return {
     b,
     vaaniCallId,
-    callerNumber: str(b.caller_number, b.from, call.from, call.caller_number, obj(call.customer).number),
+    callerNumber: phone(str(b.caller_number, b.from, call.from, call.caller_number, obj(call.customer).number)),
     startedAt: date(b.started_at ?? call.started_at ?? call.startedAt),
     answeredAt: date(b.answered_at ?? call.answered_at ?? call.answeredAt),
   };
@@ -124,17 +129,18 @@ export function parseVaaniEvent(raw: unknown) {
   const vaaniCallId = str(b.room_name, b.call_id, data.room_name, data.call_id);
   if (!vaaniCallId) throw new Error("Missing call id (room_name)");
 
-  // call_ended reports seconds; call_postprocessing reports milliseconds.
+  // Vaani's docs say call_postprocessing reports milliseconds, but a live call sent seconds. Values over
+  // 10,000 are read as milliseconds (no call lasts 2.7 hours); anything smaller is seconds.
   const rawDuration = Number(b.call_duration ?? data.call_duration);
   const durationSec = Number.isFinite(rawDuration) && rawDuration > 0
-    ? Math.round(event === "call_postprocessing" ? rawDuration / 1000 : rawDuration)
+    ? Math.round(rawDuration > 10_000 ? rawDuration / 1000 : rawDuration)
     : null;
   const at = date(b.timestamp ?? data.timestamp);
 
   return {
     event,
     vaaniCallId,
-    callerNumber: str(b.phone_number, b.caller_number, b.from, data.phone_number, data.caller_number),
+    callerNumber: phone(str(b.phone_number, b.caller_number, b.from, data.phone_number, data.caller_number)),
     at: at && !Number.isNaN(at.getTime()) ? at : null,
     durationSec,
     voiceMinutes: durationSec === null ? null : Math.ceil(durationSec / 60),

@@ -92,6 +92,16 @@ describe("parseVaaniEvent (Vaani account webhook)", () => {
     expect(r.transcript).toBe("[13:33:14] Agent: Aangan Studio, how can I help?\n[13:33:19] Caller: I want to redo my flat.");
   });
 
+  it("reads call_postprocessing duration in seconds when Vaani sends seconds (seen on a live call)", () => {
+    const r = parseVaaniEvent({ event: "call_postprocessing", call_id: "room_1", data: { room_name: "room_1", call_duration: 112.4 } });
+    expect(r).toMatchObject({ durationSec: 112, voiceMinutes: 2 });
+  });
+
+  it("ignores a caller id that is not a phone number (browser test calls send web-user)", () => {
+    expect(parseVaaniEvent({ event: "call_started", room_name: "room_1", phone_number: "web-user" }).callerNumber).toBeNull();
+    expect(parseVaaniEvent({ event: "call_started", room_name: "room_1", phone_number: "+91 98765 43210" }).callerNumber).toBe("+919876543210");
+  });
+
   it("throws without an event name", () => {
     expect(() => parseVaaniEvent({ room_name: "room_1" })).toThrow(/event/i);
   });
