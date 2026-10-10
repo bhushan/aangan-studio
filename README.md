@@ -6,6 +6,17 @@ agent runs the conversation, this app checks the caller against Nikhil's five cr
 designer a full handoff note (Telegram), and logs **every** call to HubSpot and Neon Postgres.
 
 Scope: incoming phone calls only. See "Extending to WhatsApp and the web form" below.
+Built for the MESA Founder's Office case 03 (Nikhil Deshpande, Aangan Studio, Pune).
+
+**Live:** dashboard at [aangan-studio-two.vercel.app](https://aangan-studio-two.vercel.app) (shared studio password).
+
+| At a glance | |
+|---|---|
+| Criteria check on the 39 judgeable September enquiries | 39/39 routed as expected, 0 false "qualified", every complaint escalated |
+| Check latency (Gemini 3.5 Flash-Lite) | p50 1.6 s, p95 1.8 s, hard limit 2 s mid-call |
+| Cost | about ₹0.09 of AI per check; voice at Vaani's ₹5.5 a minute |
+| Tests | 167 unit and handler tests (`npm test`), plus a live smoke test against production |
+| Stack | Next.js 16 on Vercel, Neon Postgres, AI SDK + Gemini, Vaani Labs, Cal.com, HubSpot, Telegram |
 
 ## How a call flows
 
@@ -52,10 +63,10 @@ when a tool request has no call id it attaches to the call in progress.
 { "call_id": "abc", "answers": {
     "name": "", "locality": "", "property_type": "home|office|other", "scope": "",
     "size_sqft": 0, "completion": "", "decision_maker": "", "budget_volunteered": "", "notes": "" } }
-// -> { "route": "ask", "say": "When would you need it complete?", "next_step": "ask|offer_slots|end_call", "ask_about": "timeline" }
+// -> { "route": "ask", "say": "When would you need it complete?", "next_step": "ask|offer_slots|end_call|resend_details", "ask_about": "timeline" }
 
 // POST /api/vaani/slots       { "call_id": "abc" }                       -> { "slots": [{ "start", "label" }], "say" }
-// POST /api/vaani/book        { "call_id": "abc", "slot_start": "ISO" }  -> { "booked": true, "say" }
+// POST /api/vaani/book        { "call_id": "abc", "slot_start": "ISO" }  -> { "booked": true|false, "say" }  (never an error the agent could talk over)
 // POST /api/vaani/webhook     Vaani events: call_started, user_picked_up_at, call_ended, call_postprocessing
 ```
 
@@ -69,16 +80,24 @@ when a tool request has no call id it attaches to the call in progress.
    stage and owner ids for `.env`.
 6. Vaani: create an agent in the dashboard and attach a phone number, then run
    `npx tsx scripts/vaani-setup.ts` (lists agents) and `npx tsx scripts/vaani-setup.ts <agent_id> [+91inbound]`.
-   It pushes the system prompt and greeting through the API and prints the webhook URL and the
-   three tool cURLs to paste in the dashboard. `npm run agent-prompt` prints just the prompt.
-7. Deploy by hand: `vercel deploy` (preview), `vercel deploy --prod`.
+   It pushes the system prompt and greeting and prints the webhook URL.
+7. Vaani tools: `npm run tool -- qualify|slots|book` copies each tool's cURL (secret included) to paste
+   in the dashboard as a custom tool. Then set `TOOL_NAMES` in `lib/agent-prompt.ts` to the names Vaani
+   gives them and run `npx tsx scripts/vaani-tools.ts`, which checks the tools and pushes the prompt.
+   **Never edit the tools through Vaani's API:** it wipes the hidden request-body template and every
+   tool call then arrives empty. `npm run agent-prompt` prints just the prompt.
+8. Deploy by hand: `vercel deploy` (preview), `vercel deploy --prod`.
 
 ## Testing the flow
 
 1. **Simulated calls** (no phone needed): `npm run smoke` plays Vaani's webhook events and tool
    calls for five cases (qualified, outside area, complaint, dropped, tool without call id) against
-   `APP_URL`, prints what the agent would say and the resulting Neon rows, then deletes the rows.
-   Telegram/HubSpot records it creates (once those are configured) are real; remove them by hand.
+   `APP_URL`, prints what the agent would say and the resulting Neon rows, then removes the rows,
+   HubSpot records and Cal.com booking (Telegram messages stay).
+   - `npm run smoke -- --demo --keep` replays one September phone enquiry per outcome as realistic
+     calls placed today, through the full pipeline, and keeps them for a demo.
+   - `npm run smoke -- --purge <prefix>` removes kept calls (`demo-`, `smoke-`) or calls from Vaani's
+     in-browser tester (`webrtc-`) from Neon, HubSpot and Cal.com.
 2. **A real call**: dial the number attached to the Front Desk agent. Try a qualified project
    ("3BHK in Kothrud, done by March, I'm the owner"), an out-of-area one ("flat in Nashik"),
    a price question (the agent must not give a number), and a complaint.
@@ -115,6 +134,15 @@ Numbers come from `lib/metrics.ts` (unit-tested). Pipeline values each booked co
   (`studio/transcripts/`, extracted from `seed-data/` by `scripts/extract-transcripts.ts`) and
   writes `eval/last-run.md`. Fails if any enquiry that should close comes back qualified, or a
   complaint is not escalated. Expected outcomes in `labels.json` are drafts awaiting Nikhil's review.
+
+## Limits
+
+- The 39/39 eval is against expected outcomes I drafted from `qualified.md`; Nikhil's review of
+  `studio/transcripts/labels.json` makes them ground truth.
+- After the Vaani tools were re-created (see Setup step 7), the end-to-end path is verified by the
+  production smoke test; a final live phone call is pending Vaani credit.
+- Pipeline is booked consultations at ₹8 to 14 lakh each, before conversion, not revenue.
+- One shared dashboard password suits a small studio; named logins would come with a bigger team.
 
 ## Extending to WhatsApp and the web form
 
