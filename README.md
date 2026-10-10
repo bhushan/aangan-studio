@@ -81,6 +81,25 @@ when a tool request has no call id it attaches to the call in progress.
 Integrations switch on only when all their keys are set. Until then the call still completes and
 the skipped step is recorded (`npm run smoke` prints e.g. `"telegram: Telegram not configured"`).
 
+## Dashboard
+
+One shared password (`DASHBOARD_PASSWORD`), a 30-day signed cookie (`proxy.ts`, `lib/session.ts`),
+and every data read checks the session again (`lib/dashboard.ts`).
+
+- **Overview** (`/`), for Nikhil: share of callers answered within 5 minutes against the September
+  baseline (48% got no reply within 48 hours), calls caught after hours, qualified share,
+  consultations booked, the calls that need a person, spend against booked pipeline, and why callers
+  weren't a fit. Switch between the last 7 days, the last 30 days, and all time.
+- **Calls** (`/calls`), for designers: every call, newest first, filtered to "Needs a person"
+  (complaints, callbacks, dropped calls, qualified but unbooked), "Booked" or "Not a fit".
+- **Call** (`/calls/<id>`), linked from Telegram and HubSpot: what to do next, the caller's answers,
+  the five checks with the caller's own words, the transcript, HubSpot links, and earlier calls from
+  the same number. Built to read well on a phone.
+
+Numbers come from `lib/metrics.ts` (unit-tested). Pipeline values each booked consultation at a typical
+₹8 to 14 lakh project, before conversion; voice is costed at Vaani's self-serve ₹5.5 a minute and AI at
+₹88 to the dollar (`VAANI_INR_PER_MINUTE`, `INR_PER_USD` override them).
+
 ## Tests and eval
 
 - `npm test`: routing rules, IST after-hours, pricing guardrail, handoff note, Vaani adapter,

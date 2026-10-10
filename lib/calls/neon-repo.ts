@@ -129,6 +129,14 @@ export function createNeonRepo(databaseUrl: string): CallsRepo {
     latestOpen: (since) =>
       one("select * from calls where ended_at is null and started_at >= $1 order by started_at desc limit 1", [since]),
 
+    async list(since, limit) {
+      const rows = (await sql.query(
+        "select * from calls where $1::timestamptz is null or started_at >= $1 order by started_at desc limit $2",
+        [since, limit],
+      )) as Row[];
+      return rows.map(toCall);
+    },
+
     async priorCalls(number, before) {
       const rows = (await sql.query(
         "select * from calls where caller_number = $1 and started_at < $2 order by started_at desc limit 20",

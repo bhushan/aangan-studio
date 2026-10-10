@@ -19,6 +19,8 @@ export interface CallsRepo {
   unlockHubspot(id: string): Promise<void>;
   /** Sets route to "dropped" only if no decision was reached (route null or "ask"), atomically. */
   markDroppedIfUnfinished(id: string): Promise<CallRecord>;
+  /** Calls started at or after `since` (all when null), newest first. For the dashboard. */
+  list(since: Date | null, limit: number): Promise<CallRecord[]>;
   /** Earlier calls from the same number, newest first. */
   priorCalls(callerNumber: string, beforeStartedAt: Date): Promise<CallRecord[]>;
 }

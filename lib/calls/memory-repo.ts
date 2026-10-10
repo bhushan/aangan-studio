@@ -78,6 +78,12 @@ export function createMemoryRepo(seed: CallRecord[] = []): CallsRepo & { all: ()
       rows.set(id, next);
       return next;
     },
+    async list(since, limit) {
+      return [...rows.values()]
+        .filter((c) => !since || c.startedAt >= since)
+        .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+        .slice(0, limit);
+    },
     async priorCalls(number, before) {
       return [...rows.values()]
         .filter((c) => c.callerNumber === number && c.startedAt < before)
