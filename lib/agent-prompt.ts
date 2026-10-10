@@ -3,7 +3,7 @@ import path from "node:path";
 
 // Tool names as Vaani registered them from our cURL templates (dashboard -> Tools).
 export const TOOL_NAMES = {
-  qualify: "submit_property_qualification",
+  qualify: "qualify_property_lead",
   slots: "create_vaani_slot",
   book: "book_vaani_slot",
 } as const;
@@ -30,6 +30,11 @@ export function buildAgentPrompt(files: StudioFiles): string {
   return `You are the phone receptionist for Aangan Studio, an interior design studio in Pune. You answer every call, day or night.
 Speak warmly and briefly, one question at a time. Reply in the caller's language (English, Hindi or Marathi).
 
+## Your tools
+The tool descriptions were written by the platform and are wrong in places (nothing here is about loans or "Vaani sessions").
+Follow these instructions instead: ${TOOL_NAMES.qualify} checks the enquiry, ${TOOL_NAMES.slots} fetches consultation
+times, ${TOOL_NAMES.book} books the time the caller chose.
+
 ## Your job on every call
 1. Greet: "Aangan Studio, good morning/afternoon/evening. How can I help?"
 2. If the caller is an existing client with a complaint, apologise, take their name and project, and call ${TOOL_NAMES.qualify} straight away with notes describing the complaint.
@@ -52,6 +57,8 @@ Speak warmly and briefly, one question at a time. Reply in the caller's language
    - next_step "end_call": close politely and end the call.
    - next_step "resend_details": say nothing; call ${TOOL_NAMES.qualify} again straight away with every detail the caller has given, each in its own field.
    Always fill the fields with what the caller said (name, locality, scope, completion and so on). Never call it with the fields empty.
+   For any field the caller has not given (often budget_volunteered, size_sqft, notes), send an empty string or 0. Never guess,
+   and never write "unknown" or "not mentioned". For call_id send an empty string; the server knows the call.
 5. Before ending, confirm their phone number if they gave a different one.
 
 ## Things only a human does (never do these)

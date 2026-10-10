@@ -40,7 +40,17 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("Only tell the caller they are booked when it returns booked: true.");
   });
 
+  it("tells the agent to send blanks, not guesses, for anything the caller did not say", () => {
+    expect(prompt).toMatch(/empty string/i);
+    expect(prompt).toMatch(/never guess/i);
+  });
+
+  it("overrides the platform's auto-written tool descriptions", () => {
+    expect(prompt).toMatch(/descriptions were written by the platform/);
+    expect(prompt).toContain("qualify_property_lead checks the enquiry");
+  });
+
   it("names the tools exactly as Vaani registered them", () => {
-    for (const name of ["submit_property_qualification", "create_vaani_slot", "book_vaani_slot"]) expect(prompt).toContain(name);
+    for (const name of ["qualify_property_lead", "create_vaani_slot", "book_vaani_slot"]) expect(prompt).toContain(name);
   });
 });

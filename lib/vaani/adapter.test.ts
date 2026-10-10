@@ -33,6 +33,21 @@ describe("parseQualifyRequest", () => {
     });
   });
 
+  it("treats filler the agent writes into required fields as not said", () => {
+    const r = parseQualifyRequest({
+      call_id: "made-up-id",
+      name: "Neelam",
+      locality: "Karve Nagar",
+      budget_volunteered: "Not mentioned",
+      decision_maker: "unknown",
+      notes: "N/A",
+      size_sqft: 0,
+      completion: "not specified",
+      scope: "-",
+    });
+    expect(r.answers).toEqual({ name: "Neelam", locality: "Karve Nagar" });
+  });
+
   it("reads tool arguments sent as a JSON string (OpenAI-style function calls)", () => {
     const r = parseQualifyRequest({ arguments: JSON.stringify({ name: "Puja", locality: "Nashik", completion: "in fifteen days" }) });
     expect(r.answers).toEqual({ name: "Puja", locality: "Nashik", completion: "in fifteen days" });

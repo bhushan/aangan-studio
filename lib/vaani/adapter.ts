@@ -31,6 +31,10 @@ const phone = (v: string | null) => {
 // A cURL template field Vaani did not fill in, e.g. "{room_name}" or "{{call_id}}".
 const unfilled = (v: string | null) => (v && /[{}]/.test(v) ? null : v);
 
+// Vaani marks every tool field required, so the agent writes filler for what the caller never said.
+// Filler must never pass as an answer (a "Not mentioned" budget would read as a volunteered one).
+const FILLER = /^\s*(-+|n\/?a|na|nil|none|null|unknown|not (yet )?(mentioned|specified|provided|given|known|available|asked|discussed)|no (budget|information|info|details?)( (mentioned|given|provided))?|tbd|to be (confirmed|decided))\s*\.?\s*$/i;
+
 /** Shared secret via header, bearer token, or `?secret=` (the Vaani dashboard webhook takes only a URL). */
 export function isAuthorized(headers: Headers, secret: string | undefined, url?: URL): boolean {
   if (!secret) return false;
@@ -75,7 +79,8 @@ export function parseQualifyRequest(raw: unknown) {
   const answers: Answers = {};
   for (const [key, value] of Object.entries(toolArgs(meta.b))) {
     // Vaani's template sends "" for anything not collected yet; that must not erase earlier answers.
-    if (typeof value === "string" && (!value.trim() || unfilled(value) === null)) continue;
+    if (typeof value === "string" && (!value.trim() || unfilled(value) === null || FILLER.test(value))) continue;
+    if (key === "size_sqft" && (value === 0 || value === "0")) continue;
     const field = answersSchema.shape[key as keyof Answers];
     const parsed = field?.safeParse(value);
     if (parsed?.success && parsed.data != null) Object.assign(answers, { [key]: parsed.data });
