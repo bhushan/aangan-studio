@@ -1,6 +1,6 @@
 // Simulates Vaani calls against the deployed app, then reads the rows back from Neon.
 // Usage: npm run smoke [-- --keep]   Test calls use room names starting with "smoke-". Unless --keep, their
-// Neon rows and the HubSpot records they created are deleted afterwards. Telegram messages stay.
+// Neon rows, HubSpot records and the Cal.com test booking are removed afterwards. Telegram messages stay.
 import "./load-env";
 import { neon } from "@neondatabase/serverless";
 import { env } from "../lib/env";
@@ -16,7 +16,7 @@ async function post(path: string, body: unknown) {
   return { status: res.status, ms: Date.now() - t, json: json as Record<string, unknown> };
 }
 
-async function call(name: string, phone: string, answers: Record<string, unknown> | null, opts: { withCallId?: boolean } = {}) {
+async function call(name: string, phone: string, answers: Record<string, unknown> | null, opts: { withCallId?: boolean; book?: boolean } = {}) {
   const room = `${run}-${name}`;
   console.log(`\n## ${name}`);
   await post("webhook", { event: "call_started", room_name: room, phone_number: phone });
@@ -26,6 +26,11 @@ async function call(name: string, phone: string, answers: Record<string, unknown
     if (q.json.next_step === "offer_slots") {
       const s = await post("slots", { call_id: room });
       console.log(`slots ${s.status} in ${s.ms} ms -> "${s.json.say}"`);
+      const first = (s.json.slots as { start: string }[] | undefined)?.[0];
+      if (first && opts.book) {
+        const b = await post("book", { call_id: room, slot_start: first.start });
+        console.log(`book ${b.status} in ${b.ms} ms -> ${b.json.booked}: "${b.json.say}"`);
+      }
     }
   }
   const e = await post("webhook", { event: "call_ended", room_name: room, call_duration: 95.4 });
@@ -45,7 +50,7 @@ async function main() {
   await call("qualified", "+910000000101", {
     name: "Test Priya", locality: "Kothrud", property_type: "home", scope: "Full 3BHK redesign with execution",
     size_sqft: 1400, completion: "March 2027", decision_maker: "Owner, husband agrees",
-  });
+  }, { book: true });
   await call("rejected", "+910000000102", {
     name: "Test Suresh", locality: "Nashik", property_type: "home", scope: "Home office and study redesign with execution",
     completion: "Early next year", decision_maker: "Owner",
@@ -61,7 +66,7 @@ async function main() {
 
   const sql = neon(env("DATABASE_URL"));
   const rows = (await sql.query(
-    "select vaani_call_id, caller_number, route, close_reason, duration_sec, ai_cost_usd, ai_latency_ms, telegram_sent_at is not null as telegram, hubspot_contact_id, hubspot_call_id, hubspot_deal_id, hubspot_task_id from calls where vaani_call_id like $1 order by created_at",
+    "select vaani_call_id, caller_number, route, close_reason, booking_uid, duration_sec, ai_cost_usd, ai_latency_ms, telegram_sent_at is not null as telegram, hubspot_contact_id, hubspot_call_id, hubspot_deal_id, hubspot_task_id from calls where vaani_call_id like $1 order by created_at",
     [`${run}%`],
   )) as Record<string, unknown>[];
   console.log("\n## Neon rows");
@@ -76,6 +81,15 @@ async function main() {
         const res = await fetch(`https://api.hubapi.com/crm/v3/objects/${type}/${id}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
         if (res.ok) removed++;
       }
+    }
+    for (const r of rows) {
+      if (!r.booking_uid || !process.env.CALCOM_API_KEY) continue;
+      const res = await fetch(`https://api.cal.com/v2/bookings/${r.booking_uid}/cancel`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${process.env.CALCOM_API_KEY}`, "cal-api-version": "2024-08-13", "content-type": "application/json" },
+        body: JSON.stringify({ cancellationReason: "Automated smoke test" }),
+      });
+      console.log(`Cal.com test booking cancelled: ${res.ok ? "yes" : `no (${res.status}), cancel ${r.booking_uid} by hand`}`);
     }
     await sql.query("delete from calls where vaani_call_id like $1", [`${run}%`]);
     console.log(`test rows deleted, ${removed} HubSpot records removed (pass --keep to keep them)`);
